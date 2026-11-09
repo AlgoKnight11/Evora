@@ -59,6 +59,72 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     });
   }
 
+  void _showForgotPasswordDialog() {
+    final resetEmailController = TextEditingController(text: _emailController.text.trim());
+    showDialog(
+      context: context,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          backgroundColor: EvoraColors.surfaceContainerLowest,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_reset, color: EvoraColors.primary),
+              SizedBox(width: 8),
+              Text('Reset Password', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your registered email address. We will send you a secure link to reset or create your password.',
+                style: TextStyle(fontSize: 13, color: EvoraColors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: resetEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  hintText: 'Enter your email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogCtx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final email = resetEmailController.text.trim();
+                if (email.isEmpty) return;
+                Navigator.pop(dialogCtx);
+                final sent = await ref.read(authProvider.notifier).sendPasswordResetEmail(email);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        sent
+                            ? 'Password reset email sent to $email. Follow the link to set your password.'
+                            : 'Could not send reset email. Please verify your address.',
+                      ),
+                      backgroundColor: sent ? EvoraColors.primary : EvoraColors.error,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Send Link'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
@@ -186,7 +252,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                 // Tab Content
                 SizedBox(
-                  height: 220,
+                  height: 240,
                   child: TabBarView(
                     controller: _tabController,
                     children: [
@@ -210,7 +276,27 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               prefixIcon: Icon(Icons.lock_outline),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: _showForgotPasswordDialog,
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(50, 24),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: EvoraColors.primary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
                           ElevatedButton(
                             onPressed: authState.isLoading
                                 ? null

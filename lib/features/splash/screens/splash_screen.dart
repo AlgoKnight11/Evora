@@ -118,21 +118,23 @@ class _SplashScreenState extends State<SplashScreen>
       final prefs = await SharedPreferences.getInstance();
       final hasCompletedOnboarding =
           prefs.getBool('has_completed_onboarding') ?? false;
-      debugPrint('[Splash] has_completed_onboarding: $hasCompletedOnboarding');
+      final isAuthenticated = prefs.getBool('is_authenticated') ?? false;
+      User? currentUser;
+      try {
+        currentUser = FirebaseAuth.instance.currentUser;
+      } catch (_) {}
+
+      debugPrint(
+        '[Splash] hasCompletedOnboarding: $hasCompletedOnboarding, '
+        'isAuthenticated: $isAuthenticated, currentUser: ${currentUser?.uid}',
+      );
 
       if (!hasCompletedOnboarding) {
         _destinationRoute = '/onboarding';
+      } else if (isAuthenticated || currentUser != null) {
+        _destinationRoute = '/home';
       } else {
-        try {
-          final currentUser = FirebaseAuth.instance.currentUser;
-          if (currentUser != null) {
-            _destinationRoute = '/home';
-          } else {
-            _destinationRoute = '/login';
-          }
-        } catch (_) {
-          _destinationRoute = '/login';
-        }
+        _destinationRoute = '/login';
       }
       debugPrint('[Splash] Resolved destination route: $_destinationRoute');
     } catch (e, stack) {
