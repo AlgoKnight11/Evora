@@ -31,14 +31,28 @@ void main() async {
     ),
   );
 
-  // Attempt Firebase Initialization
+  // Attempt Firebase Initialization (Sourced securely from .env if present)
   try {
-    await Firebase.initializeApp();
-    LoggingService.logBreadcrumb('Firebase Core initialized successfully.');
+    final apiKey = dotenv.maybeGet('FIREBASE_API_KEY');
+    if (apiKey != null && apiKey.isNotEmpty) {
+      await Firebase.initializeApp(
+        options: FirebaseOptions(
+          apiKey: apiKey,
+          appId: dotenv.maybeGet('FIREBASE_APP_ID') ?? '1:539853550623:android:f078033e1f4e7d1310d12a',
+          messagingSenderId: dotenv.maybeGet('FIREBASE_MESSAGING_SENDER_ID') ?? '539853550623',
+          projectId: dotenv.maybeGet('FIREBASE_PROJECT_ID') ?? 'evora-tech',
+          storageBucket: dotenv.maybeGet('FIREBASE_STORAGE_BUCKET') ?? 'evora-tech.firebasestorage.app',
+        ),
+      );
+      LoggingService.logBreadcrumb('Firebase Core initialized with .env options.');
+    } else {
+      await Firebase.initializeApp();
+      LoggingService.logBreadcrumb('Firebase Core initialized with default config.');
+    }
   } catch (e) {
     LoggingService.logBreadcrumb(
       'Firebase config not detected yet (development mock mode enabled). '
-      'Place google-services.json in android/app/ to connect live project.',
+      'Configure FIREBASE_API_KEY in .env to connect live project.',
     );
   }
 

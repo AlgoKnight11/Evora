@@ -109,8 +109,7 @@ lib/
    ```bash
    cp .env.example .env
    ```
-   * Populate `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET`, and `GEMINI_API_KEY` in `.env`.
-   * Place your `google-services.json` inside `android/app/` (refer to `android/app/google-services.json.example`).
+   * Populate `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET`, `GEMINI_API_KEY`, and `FIREBASE_API_KEY` credentials in `.env`.
 
 3. **Install Flutter dependencies:**
    ```bash
