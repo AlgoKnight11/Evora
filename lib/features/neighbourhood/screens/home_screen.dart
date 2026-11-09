@@ -309,7 +309,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   subtitle: 'Official grievance wizard',
                   icon: Icons.assignment_outlined,
                   color: EvoraColors.primary,
-                  onTap: () {},
+                  onTap: () => context.push('/civic-flow'),
                 ),
                 _buildServiceCard(
                   context,
@@ -318,7 +318,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   icon: Icons.dynamic_feed_outlined,
                   color: EvoraColors.secondaryContainer,
                   iconColor: EvoraColors.onSecondaryContainer,
-                  onTap: () {},
+                  onTap: () => context.push('/civic-book'),
                 ),
                 _buildServiceCard(
                   context,
