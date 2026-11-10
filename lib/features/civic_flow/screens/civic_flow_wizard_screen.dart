@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../../services/location_service.dart';
+import '../../auth/services/auth_service.dart';
 import '../services/civic_flow_service.dart';
 
 class CivicFlowWizardScreen extends ConsumerStatefulWidget {
@@ -34,7 +36,7 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
   String _selectedSubcategory = 'Garbage Dump Overflow';
   final _descController = TextEditingController();
   final _landmarkController = TextEditingController();
-  final _localityController = TextEditingController(text: 'Dehradun Central');
+  final _localityController = TextEditingController();
   File? _imageFile;
   bool _isSubmitting = false;
 
@@ -96,6 +98,14 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
     }
     if (widget.initialLocality != null && widget.initialLocality!.isNotEmpty) {
       _localityController.text = widget.initialLocality!;
+    } else {
+      final loc = LocationService.currentLocation;
+      final userLocality = ref.read(authProvider).user?.selectedLocality;
+      _localityController.text = loc.isLiveGps
+          ? loc.localityName
+          : (userLocality != null && userLocality.isNotEmpty
+              ? userLocality
+              : loc.localityName);
     }
   }
 
@@ -151,6 +161,7 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
         maxWidth: 1920,
         maxHeight: 1080,
       );
+      if (!mounted) return;
       if (picked != null) {
         setState(() => _imageFile = File(picked.path));
       }
@@ -178,9 +189,10 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
       sourceCivicBookPostId: widget.sourcePostId,
     );
 
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
-    if (caseNumber != null && mounted) {
+    if (caseNumber != null) {
       _showSuccessDialog(caseNumber);
     }
   }

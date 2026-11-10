@@ -1,3 +1,16 @@
+/// Parses DateTime safely from ISO-8601 String, DateTime, or Firestore Timestamp
+DateTime _parseCivicDateTime(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+  if (value != null) {
+    try {
+      final dt = (value as dynamic).toDate();
+      if (dt is DateTime) return dt;
+    } catch (_) {}
+  }
+  return DateTime.now();
+}
+
 /// CivicBook Community Post Model
 class CivicBookPost {
   final String id;
@@ -125,9 +138,7 @@ class CivicBookPost {
       commentsCount: (map['commentsCount'] as num?)?.toInt() ?? 0,
       isFormalCaseRaised: map['isFormalCaseRaised'] ?? false,
       civicFlowCaseId: map['civicFlowCaseId'],
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt']) ?? DateTime.now()
-          : DateTime.now(),
+      createdAt: _parseCivicDateTime(map['createdAt']),
       currentUserVote: userVote,
       distanceKm: distance,
     );
@@ -170,9 +181,7 @@ class CivicComment {
       authorId: map['authorId'] ?? '',
       authorName: map['authorName'] ?? 'Resident',
       text: map['text'] ?? '',
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt']) ?? DateTime.now()
-          : DateTime.now(),
+      createdAt: _parseCivicDateTime(map['createdAt']),
     );
   }
 }

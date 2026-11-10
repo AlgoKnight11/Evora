@@ -91,6 +91,7 @@ class _CreateCivicBookPostScreenState
         maxHeight: 1080,
       );
 
+      if (!mounted) return;
       if (picked != null) {
         setState(() {
           _selectedImage = File(picked.path);
@@ -120,9 +121,10 @@ class _CreateCivicBookPostScreenState
       imageFile: _selectedImage,
     );
 
+    if (!mounted) return;
     setState(() => _isSubmitting = false);
 
-    if (success && mounted) {
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Observation posted successfully to CivicBook!'),

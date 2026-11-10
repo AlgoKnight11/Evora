@@ -32,6 +32,12 @@ class _CaseDetailScreenState extends ConsumerState<CaseDetailScreen> {
     final caseIndex = state.citizenCases.indexWhere((c) => c.id == widget.caseId);
 
     if (caseIndex == -1) {
+      if (state.isLoading) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Grievance Details')),
+          body: const Center(child: CircularProgressIndicator()),
+        );
+      }
       return Scaffold(
         appBar: AppBar(title: const Text('Grievance Details')),
         body: const Center(child: Text('Case record not found.')),
@@ -205,8 +211,17 @@ class _CaseDetailScreenState extends ConsumerState<CaseDetailScreen> {
                                 final text = _infoResponseController.text.trim();
                                 if (text.isEmpty) return;
                                 setState(() => _isActionLoading = true);
-                                await ref.read(civicFlowProvider.notifier).respondToNeedsInfo(c.id, text);
+                                final ok = await ref
+                                    .read(civicFlowProvider.notifier)
+                                    .respondToNeedsInfo(c.id, text);
+                                if (!mounted) return;
                                 setState(() => _isActionLoading = false);
+                                if (ok) {
+                                  _infoResponseController.clear();
+                                  if (context.mounted) {
+                                    FocusScope.of(context).unfocus();
+                                  }
+                                }
                               },
                         child: _isActionLoading
                             ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))

@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../services/cloudinary_service.dart';
@@ -36,8 +38,10 @@ class CivicFlowState {
 
   /// Remaining seconds until rate limit window clears
   int get rateLimitCooldownSeconds {
-    if (!isRateLimited) return 0;
-    final oldestInWindow = recentSubmissionTimes.first;
+    final tenMinutesAgo = DateTime.now().subtract(const Duration(minutes: 10));
+    final activeTimes = recentSubmissionTimes.where((t) => t.isAfter(tenMinutesAgo)).toList();
+    if (activeTimes.length < 3) return 0;
+    final oldestInWindow = activeTimes.reduce((a, b) => a.isBefore(b) ? a : b);
     final expiresAt = oldestInWindow.add(const Duration(minutes: 10));
     final diff = expiresAt.difference(DateTime.now()).inSeconds;
     return diff > 0 ? diff : 0;
@@ -61,115 +65,98 @@ class CivicFlowState {
   }
 }
 
-/// Riverpod StateNotifier managing formal municipal grievances
+/// Riverpod StateNotifier managing formal municipal grievances (100% Real Data, Zero Static Samples)
 class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
   final FirebaseFirestore? _firestore;
   final Ref _ref;
   static const _uuid = Uuid();
 
-  CivicFlowNotifier(this._ref, [this._firestore]) : super(const CivicFlowState()) {
-    fetchCitizenCases();
+  static String _casesCacheKey(String uid) => 'evora_cf_real_cases_v1_$uid';
+
+  CivicFlowNotifier(
+    this._ref, [
+    this._firestore,
+    bool autoLoad = true,
+  ]) : super(const CivicFlowState()) {
+    if (autoLoad) {
+      fetchCitizenCases();
+    }
   }
 
-  /// Fetches cases filed by the current authenticated citizen
+  String _resolveDisplayName(String? rawName, {String fallback = 'Local Resident'}) {
+    final trimmed = rawName?.trim() ?? '';
+    return trimmed.isNotEmpty ? trimmed : fallback;
+  }
+
+  Future<List<CivicFlowCase>> _loadCachedCases(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_casesCacheKey(uid));
+      if (raw == null) return [];
+      final List<dynamic> decoded = jsonDecode(raw);
+      return decoded
+          .map((e) {
+            final map = e as Map<String, dynamic>;
+            return CivicFlowCase.fromMap(map, id: map['id'] ?? '');
+          })
+          .where((c) => c.id.isNotEmpty && !c.id.startsWith('sample_') && !c.id.startsWith('seed_'))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCachedCases(String uid, List<CivicFlowCase> cases) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(cases.map((c) => c.toMap()).toList());
+      await prefs.setString(_casesCacheKey(uid), encoded);
+    } catch (_) {}
+  }
+
+  /// Fetches real cases filed by the current authenticated citizen (zero static sample data)
   Future<void> fetchCitizenCases() async {
     state = state.copyWith(isLoading: true, clearError: true);
     final cid = LoggingService.generateCorrelationId();
-    LoggingService.logBreadcrumb('Fetching citizen CivicFlow cases', correlationId: cid);
+    LoggingService.logBreadcrumb('Fetching real citizen CivicFlow cases', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid;
+    final uid = currentUser?.uid ?? 'local_user';
 
+    final Map<String, CivicFlowCase> mergedById = {};
+
+    // 1. Load real cached cases belonging to this user
+    final cached = await _loadCachedCases(uid);
+    for (final c in cached) {
+      mergedById[c.id] = c;
+    }
+
+    // 2. Fetch live cases from Firestore (single-field filter avoids composite index errors)
     try {
-      if (_firestore != null && uid != null) {
+      if (_firestore != null && currentUser?.uid != null) {
         final querySnapshot = await _firestore
             .collection('tenants')
             .doc(AppConstants.defaultTenantId)
             .collection('civicFlowCases')
-            .where('citizenId', isEqualTo: uid)
-            .orderBy('createdAt', descending: true)
+            .where('citizenId', isEqualTo: currentUser!.uid)
             .get();
 
-        if (querySnapshot.docs.isNotEmpty) {
-          final fetched = querySnapshot.docs
-              .map((doc) => CivicFlowCase.fromMap(doc.data(), id: doc.id))
-              .toList();
-
-          state = state.copyWith(citizenCases: fetched, isLoading: false);
-          return;
+        for (final doc in querySnapshot.docs) {
+          if (doc.id.startsWith('sample_') || doc.id.startsWith('seed_')) continue;
+          final remoteCase = CivicFlowCase.fromMap(doc.data(), id: doc.id);
+          mergedById[doc.id] = remoteCase;
         }
       }
     } catch (e) {
-      LoggingService.logError('Failed to fetch cases from Firestore: $e', correlationId: cid);
+      LoggingService.logError('Firestore CivicFlow fetch note: $e', correlationId: cid);
     }
 
-    // Fallback seed case for previewing the 10-stage timeline on day 1
-    final now = DateTime.now();
-    final sampleCase = CivicFlowCase(
-      id: 'sample_cf_001',
-      caseNumber: 'CF-${now.year}-000108',
-      tenantId: AppConstants.defaultTenantId,
-      citizenId: uid ?? 'citizen_demo',
-      citizenName: currentUser?.displayName ?? 'Local Resident',
-      citizenPhone: currentUser?.phoneNumber ?? '+91 98765 43210',
-      category: 'Roads & Footpaths',
-      subcategory: 'Dangerous Pothole',
-      description:
-          'Deep pothole spanning approximately 1.5 meters across northbound lane near Dilaram Chowk. Causing vehicle damage.',
-      landmark: 'Opposite Central Bank ATM, Dilaram Chowk',
-      locality: 'Rajpur Road',
-      latitude: 30.3340,
-      longitude: 78.0480,
-      imageUrl:
-          'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80',
-      priority: 'high',
-      status: CivicFlowStatus.inProgress,
-      assignedDepartment: 'Public Works Department (PWD) - Ward 3 Division',
-      assignedOfficer: 'Er. R. S. Chauhan (Assistant Engineer)',
-      officerNotes:
-          'Road patch material dispatched. Bitumen leveling underway as of 11:30 AM.',
-      timeline: [
-        CivicFlowTimelineEvent(
-          status: CivicFlowStatus.submitted,
-          title: 'Grievance Submitted',
-          description: 'Case registered with reference number CF-${now.year}-000108.',
-          timestamp: now.subtract(const Duration(days: 2, hours: 4)),
-          actor: 'Citizen',
-        ),
-        CivicFlowTimelineEvent(
-          status: CivicFlowStatus.underTriage,
-          title: 'Triage Completed',
-          description: 'Categorized under Road Infrastructure and verified within Ward 3 jurisdiction.',
-          timestamp: now.subtract(const Duration(days: 2, hours: 1)),
-          actor: 'Nagar Nigam Portal Control Desk',
-        ),
-        CivicFlowTimelineEvent(
-          status: CivicFlowStatus.verified,
-          title: 'Ground Inspection Verified',
-          description: 'Field officer verified crater dimensions. Pothole poses safety hazard.',
-          timestamp: now.subtract(const Duration(days: 1, hours: 8)),
-          actor: 'Ward Inspector M. Negi',
-        ),
-        CivicFlowTimelineEvent(
-          status: CivicFlowStatus.assigned,
-          title: 'Assigned to PWD Division',
-          description: 'Assigned to PWD maintenance gang for fast-track cold-mix patch work.',
-          timestamp: now.subtract(const Duration(days: 1, hours: 2)),
-          actor: 'Er. R. S. Chauhan',
-        ),
-        CivicFlowTimelineEvent(
-          status: CivicFlowStatus.inProgress,
-          title: 'Bitumen Repair Underway',
-          description: 'Maintenance vehicle on site. Road patch repair actively in progress.',
-          timestamp: now.subtract(const Duration(hours: 3)),
-          actor: 'PWD Field Team',
-        ),
-      ],
-      createdAt: now.subtract(const Duration(days: 2, hours: 4)),
-      updatedAt: now.subtract(const Duration(hours: 3)),
-    );
+    final realCases = mergedById.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    state = state.copyWith(citizenCases: [sampleCase], isLoading: false);
+    await _saveCachedCases(uid, realCases);
+    if (!mounted) return;
+    state = state.copyWith(citizenCases: realCases, isLoading: false);
   }
 
   /// Submit a new formal grievance case with sliding window rate limiting
@@ -196,8 +183,8 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
     LoggingService.logBreadcrumb('Submitting formal CivicFlow case: $category', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'anon_citizen';
-    final citizenName = currentUser?.displayName ?? 'Local Resident';
+    final uid = currentUser?.uid ?? 'local_user';
+    final citizenName = _resolveDisplayName(currentUser?.displayName);
     final citizenPhone = currentUser?.phoneNumber;
 
     // 2. Upload photo evidence to Cloudinary with EXIF stripping
@@ -211,6 +198,8 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
         imageUrl = uploadRes.url;
       }
     }
+
+    if (!mounted) return null;
 
     // 3. Acquire location coordinates
     final loc = LocationService.currentLocation;
@@ -238,8 +227,8 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
       category: category,
       subcategory: subcategory,
       description: description.trim(),
-      landmark: landmark?.trim(),
-      locality: locality,
+      landmark: landmark?.trim().isNotEmpty == true ? landmark!.trim() : null,
+      locality: locality.trim(),
       latitude: loc.latitude,
       longitude: loc.longitude,
       imageUrl: imageUrl,
@@ -251,7 +240,20 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
       updatedAt: now,
     );
 
-    // 4. Save to Firestore
+    // 4. Persist locally & update state
+    final updatedCases = [newCase, ...state.citizenCases];
+    await _saveCachedCases(uid, updatedCases);
+    if (!mounted) return null;
+
+    final updatedTimes = [now, ...state.recentSubmissionTimes];
+    state = state.copyWith(
+      isLoading: false,
+      citizenCases: updatedCases,
+      lastSubmittedCaseNumber: caseNumber,
+      recentSubmissionTimes: updatedTimes,
+    );
+
+    // 5. Save to Firestore
     try {
       if (_firestore != null) {
         await _firestore
@@ -262,17 +264,8 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
             .set(newCase.toMap());
       }
     } catch (e) {
-      LoggingService.logError('Firestore write error for case: $e', correlationId: cid);
+      LoggingService.logError('Firestore submitCase sync note: $e', correlationId: cid);
     }
-
-    // 5. Update local state and rate limit log
-    final updatedTimes = [now, ...state.recentSubmissionTimes];
-    state = state.copyWith(
-      isLoading: false,
-      citizenCases: [newCase, ...state.citizenCases],
-      lastSubmittedCaseNumber: caseNumber,
-      recentSubmissionTimes: updatedTimes,
-    );
 
     LoggingService.logBreadcrumb('Case created successfully with reference $caseNumber', correlationId: cid);
     return caseNumber;
@@ -282,6 +275,9 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
   Future<bool> respondToNeedsInfo(String caseId, String responseText) async {
     final index = state.citizenCases.indexWhere((c) => c.id == caseId);
     if (index == -1) return false;
+
+    final currentUser = _ref.read(authProvider).user;
+    final uid = currentUser?.uid ?? 'local_user';
 
     final targetCase = state.citizenCases[index];
     final now = DateTime.now();
@@ -304,6 +300,7 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
     final list = List<CivicFlowCase>.from(state.citizenCases);
     list[index] = updatedCase;
     state = state.copyWith(citizenCases: list);
+    await _saveCachedCases(uid, list);
 
     // Sync to Firestore
     try {
@@ -328,6 +325,9 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
   Future<bool> verifyResolution(String caseId, {required bool isSatisfied, String? feedback}) async {
     final index = state.citizenCases.indexWhere((c) => c.id == caseId);
     if (index == -1) return false;
+
+    final currentUser = _ref.read(authProvider).user;
+    final uid = currentUser?.uid ?? 'local_user';
 
     final targetCase = state.citizenCases[index];
     final now = DateTime.now();
@@ -355,6 +355,7 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
     final list = List<CivicFlowCase>.from(state.citizenCases);
     list[index] = updatedCase;
     state = state.copyWith(citizenCases: list);
+    await _saveCachedCases(uid, list);
 
     try {
       if (_firestore != null) {
@@ -378,6 +379,7 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
 /// Global Riverpod Provider for CivicFlow Grievance Cases
 final civicFlowProvider = StateNotifierProvider<CivicFlowNotifier, CivicFlowState>((ref) {
+  ref.watch(authProvider.select((s) => s.user?.uid));
   FirebaseFirestore? firestore;
   try {
     firestore = FirebaseFirestore.instance;

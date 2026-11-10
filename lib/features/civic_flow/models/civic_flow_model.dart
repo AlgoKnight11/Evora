@@ -1,3 +1,16 @@
+/// Parses DateTime safely from ISO-8601 String, DateTime, or Firestore Timestamp
+DateTime _parseFlowDateTime(dynamic value) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
+  if (value != null) {
+    try {
+      final dt = (value as dynamic).toDate();
+      if (dt is DateTime) return dt;
+    } catch (_) {}
+  }
+  return DateTime.now();
+}
+
 /// CivicFlow Case Status Values
 class CivicFlowStatus {
   static const String submitted = 'submitted';
@@ -70,9 +83,7 @@ class CivicFlowTimelineEvent {
       status: map['status'] ?? 'submitted',
       title: map['title'] ?? 'Status Update',
       description: map['description'] ?? '',
-      timestamp: map['timestamp'] != null
-          ? DateTime.tryParse(map['timestamp']) ?? DateTime.now()
-          : DateTime.now(),
+      timestamp: _parseFlowDateTime(map['timestamp']),
       actor: map['actor'] ?? 'System',
     );
   }
@@ -229,12 +240,8 @@ class CivicFlowCase {
       officerNotes: map['officerNotes'],
       citizenFeedback: map['citizenFeedback'],
       timeline: timelineEvents,
-      createdAt: map['createdAt'] != null
-          ? DateTime.tryParse(map['createdAt']) ?? DateTime.now()
-          : DateTime.now(),
-      updatedAt: map['updatedAt'] != null
-          ? DateTime.tryParse(map['updatedAt']) ?? DateTime.now()
-          : DateTime.now(),
+      createdAt: _parseFlowDateTime(map['createdAt']),
+      updatedAt: _parseFlowDateTime(map['updatedAt']),
     );
   }
 }

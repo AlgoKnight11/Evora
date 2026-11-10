@@ -6,13 +6,15 @@ class AppConstants {
   static const String appTagline = 'Greener Choices. Healthier Cities.';
   static const String appVersion = '1.0.0';
 
+  static String? _safeEnv(String key) => dotenv.isInitialized ? dotenv.maybeGet(key) : null;
+
   // Cloudinary Configuration (Loaded securely from .env)
   static String get cloudinaryCloudName =>
-      dotenv.maybeGet('CLOUDINARY_CLOUD_NAME') ??
+      _safeEnv('CLOUDINARY_CLOUD_NAME') ??
       const String.fromEnvironment('CLOUDINARY_CLOUD_NAME', defaultValue: 'ztamooew');
 
   static String get cloudinaryUploadPreset =>
-      dotenv.maybeGet('CLOUDINARY_UPLOAD_PRESET') ??
+      _safeEnv('CLOUDINARY_UPLOAD_PRESET') ??
       const String.fromEnvironment('CLOUDINARY_UPLOAD_PRESET', defaultValue: 'evora_unsigned');
 
   static String get cloudinaryUploadUrl =>
@@ -20,12 +22,12 @@ class AppConstants {
 
   // Google Gemini AI API Key (Loaded securely from .env)
   static String get geminiApiKey =>
-      dotenv.maybeGet('GEMINI_API_KEY') ??
+      _safeEnv('GEMINI_API_KEY') ??
       const String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
 
   // Default Pilot Tenant
   static String get defaultTenantId =>
-      dotenv.maybeGet('DEFAULT_TENANT_ID') ??
+      _safeEnv('DEFAULT_TENANT_ID') ??
       const String.fromEnvironment('DEFAULT_TENANT_ID', defaultValue: 'tenant_dehradun_01');
 
   static const String defaultCity = 'Dehradun';

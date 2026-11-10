@@ -114,32 +114,45 @@ class CivicBookFeedScreen extends ConsumerWidget {
               child: state.isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : posts.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(32),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.nature_people_outlined, size: 64, color: EvoraColors.outline),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'No observations within ${state.selectedRadiusKm.toInt()} km',
-                                  style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                      ? RefreshIndicator(
+                          onRefresh: () => notifier.refreshPosts(),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              return SingleChildScrollView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                                  child: Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(32),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.nature_people_outlined, size: 64, color: EvoraColors.outline),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'No observations within ${state.selectedRadiusKm.toInt()} km',
+                                            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          const Text(
+                                            'Try expanding to 5 km or be the first neighbor to post a community report!',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(color: EvoraColors.onSurfaceVariant, fontSize: 13),
+                                          ),
+                                          const SizedBox(height: 20),
+                                          ElevatedButton.icon(
+                                            icon: const Icon(Icons.add),
+                                            label: const Text('Post First Observation'),
+                                            onPressed: () => context.push('/civic-book/create'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Try expanding to 5 km or be the first neighbor to post a community report!',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(color: EvoraColors.onSurfaceVariant, fontSize: 13),
-                                ),
-                                const SizedBox(height: 20),
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.add),
-                                  label: const Text('Post First Observation'),
-                                  onPressed: () => context.push('/civic-book/create'),
-                                ),
-                              ],
-                            ),
+                              );
+                            },
                           ),
                         )
                       : RefreshIndicator(

@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../services/cloudinary_service.dart';
@@ -12,7 +14,9 @@ import '../models/civic_book_model.dart';
 /// State of the CivicBook Community Observation Feed
 class CivicBookState {
   final bool isLoading;
+  final bool isLoadingComments;
   final List<CivicBookPost> allPosts;
+  final Map<String, List<CivicComment>> commentsByPost;
   final double selectedRadiusKm; // 3.0 or 5.0
   final String selectedCategory; // 'all' or specific category
   final EvoraLocation userLocation;
@@ -20,7 +24,9 @@ class CivicBookState {
 
   const CivicBookState({
     this.isLoading = false,
+    this.isLoadingComments = false,
     this.allPosts = const [],
+    this.commentsByPost = const {},
     this.selectedRadiusKm = AppConstants.defaultFeedRadiusKm, // 3.0 km
     this.selectedCategory = 'all',
     this.userLocation = EvoraLocation.defaultDehradun,
@@ -42,7 +48,8 @@ class CivicBookState {
       if (!isWithinRadius) return false;
 
       // 2. Category Check
-      if (selectedCategory != 'all' && post.category.toLowerCase() != selectedCategory.toLowerCase()) {
+      if (selectedCategory != 'all' &&
+          post.category.toLowerCase() != selectedCategory.toLowerCase()) {
         return false;
       }
 
@@ -61,7 +68,9 @@ class CivicBookState {
 
   CivicBookState copyWith({
     bool? isLoading,
+    bool? isLoadingComments,
     List<CivicBookPost>? allPosts,
+    Map<String, List<CivicComment>>? commentsByPost,
     double? selectedRadiusKm,
     String? selectedCategory,
     EvoraLocation? userLocation,
@@ -70,7 +79,9 @@ class CivicBookState {
   }) {
     return CivicBookState(
       isLoading: isLoading ?? this.isLoading,
+      isLoadingComments: isLoadingComments ?? this.isLoadingComments,
       allPosts: allPosts ?? this.allPosts,
+      commentsByPost: commentsByPost ?? this.commentsByPost,
       selectedRadiusKm: selectedRadiusKm ?? this.selectedRadiusKm,
       selectedCategory: selectedCategory ?? this.selectedCategory,
       userLocation: userLocation ?? this.userLocation,
@@ -79,34 +90,136 @@ class CivicBookState {
   }
 }
 
-/// Riverpod Notifier managing CivicBook Community Feed
+/// Riverpod Notifier managing CivicBook Community Feed (100% Real Data, Zero Static Seeds)
 class CivicBookNotifier extends StateNotifier<CivicBookState> {
   final FirebaseFirestore? _firestore;
   final Ref _ref;
   static const _uuid = Uuid();
 
-  CivicBookNotifier(this._ref, [this._firestore]) : super(const CivicBookState()) {
-    initFeed();
+  static const String _postsCacheKey = 'evora_cb_real_posts_v1';
+  static String _commentsCacheKey(String postId) => 'evora_cb_real_comments_$postId';
+  static String _votesCacheKey(String uid) => 'evora_cb_real_votes_$uid';
+
+  CivicBookNotifier(
+    this._ref, [
+    this._firestore,
+    bool autoLoad = true,
+  ]) : super(const CivicBookState()) {
+    if (autoLoad) {
+      initFeed();
+    }
+  }
+
+  String _resolveDisplayName(String? rawName, {String fallback = 'Local Resident'}) {
+    final trimmed = rawName?.trim() ?? '';
+    return trimmed.isNotEmpty ? trimmed : fallback;
   }
 
   Future<void> initFeed() async {
     state = state.copyWith(isLoading: true, clearError: true);
     // 1. Acquire current device coordinates or fallback
     final loc = await LocationService.acquireLocation();
+    if (!mounted) return;
     state = state.copyWith(userLocation: loc);
 
-    // 2. Load posts from Firestore or Fallback Seed
+    // 2. Load real posts from Firestore & real local cache
     await refreshPosts();
   }
 
-  /// Refreshes posts from Firestore with realistic community seed fallback
+  Future<List<CivicBookPost>> _loadCachedPosts(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawPosts = prefs.getString(_postsCacheKey);
+      final rawVotes = prefs.getString(_votesCacheKey(uid));
+
+      Map<String, int> userVotes = {};
+      if (rawVotes != null) {
+        final decodedVotes = jsonDecode(rawVotes) as Map<String, dynamic>;
+        userVotes = decodedVotes.map((k, v) => MapEntry(k, (v as num).toInt()));
+      }
+
+      if (rawPosts == null) return [];
+      final List<dynamic> decoded = jsonDecode(rawPosts);
+      return decoded
+          .map((e) {
+            final map = e as Map<String, dynamic>;
+            final id = map['id'] as String? ?? '';
+            return CivicBookPost.fromMap(map, id: id, userVote: userVotes[id] ?? 0);
+          })
+          .where((p) => p.id.isNotEmpty && !p.id.startsWith('seed_'))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCachedPosts(List<CivicBookPost> posts) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(posts.map((p) => p.toMap()).toList());
+      await prefs.setString(_postsCacheKey, encoded);
+    } catch (_) {}
+  }
+
+  Future<void> _saveCachedVote(String uid, String postId, int voteValue) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawVotes = prefs.getString(_votesCacheKey(uid));
+      Map<String, dynamic> votes = {};
+      if (rawVotes != null) {
+        votes = jsonDecode(rawVotes) as Map<String, dynamic>;
+      }
+      if (voteValue == 0) {
+        votes.remove(postId);
+      } else {
+        votes[postId] = voteValue;
+      }
+      await prefs.setString(_votesCacheKey(uid), jsonEncode(votes));
+    } catch (_) {}
+  }
+
+  Future<List<CivicComment>> _loadCachedComments(String postId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_commentsCacheKey(postId));
+      if (raw == null) return [];
+      final List<dynamic> decoded = jsonDecode(raw);
+      return decoded
+          .map((e) {
+            final map = e as Map<String, dynamic>;
+            return CivicComment.fromMap(map, id: map['id'] ?? '');
+          })
+          .where((c) => c.id.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> _saveCachedComments(String postId, List<CivicComment> comments) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = jsonEncode(comments.map((c) => c.toMap()).toList());
+      await prefs.setString(_commentsCacheKey(postId), encoded);
+    } catch (_) {}
+  }
+
+  /// Refreshes posts strictly from Firestore & verified real local cache (zero fake/seed data)
   Future<void> refreshPosts() async {
     final cid = LoggingService.generateCorrelationId();
-    LoggingService.logBreadcrumb('Refreshing CivicBook community posts', correlationId: cid);
+    LoggingService.logBreadcrumb('Refreshing real CivicBook community posts', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
     final uid = currentUser?.uid ?? 'guest_uid';
 
+    // 1. Load real cached posts (e.g. posts created while offline or dev-test phone mode)
+    final Map<String, CivicBookPost> mergedById = {};
+    final cachedPosts = await _loadCachedPosts(uid);
+    for (final p in cachedPosts) {
+      mergedById[p.id] = p;
+    }
+
+    // 2. Fetch live posts from Firestore
     try {
       if (_firestore != null) {
         final querySnapshot = await _firestore
@@ -117,111 +230,44 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
             .limit(50)
             .get();
 
-        if (querySnapshot.docs.isNotEmpty) {
-          final List<CivicBookPost> fetchedPosts = [];
+        for (final doc in querySnapshot.docs) {
+          if (doc.id.startsWith('seed_')) continue;
 
-          for (final doc in querySnapshot.docs) {
-            // Check current user's vote
-            int userVote = 0;
-            try {
-              final voteDoc = await doc.reference.collection('votes').doc(uid).get();
-              if (voteDoc.exists) {
-                userVote = (voteDoc.data()?['value'] as num?)?.toInt() ?? 0;
-              }
-            } catch (_) {}
-
-            fetchedPosts.add(CivicBookPost.fromMap(doc.data(), id: doc.id, userVote: userVote));
+          int userVote = 0;
+          try {
+            final voteDoc = await doc.reference.collection('votes').doc(uid).get();
+            if (voteDoc.exists) {
+              userVote = (voteDoc.data()?['value'] as num?)?.toInt() ?? 0;
+            } else {
+              userVote = mergedById[doc.id]?.currentUserVote ?? 0;
+            }
+          } catch (_) {
+            userVote = mergedById[doc.id]?.currentUserVote ?? 0;
           }
 
-          state = state.copyWith(allPosts: fetchedPosts, isLoading: false);
-          return;
+          final firestorePost = CivicBookPost.fromMap(
+            doc.data(),
+            id: doc.id,
+            userVote: userVote,
+          );
+          final cachedComments = await _loadCachedComments(doc.id);
+          final resolvedCommentsCount = firestorePost.commentsCount > cachedComments.length
+              ? firestorePost.commentsCount
+              : cachedComments.length;
+
+          mergedById[doc.id] = firestorePost.copyWith(commentsCount: resolvedCommentsCount);
         }
       }
     } catch (e) {
-      LoggingService.logError('Failed to fetch from Firestore: $e. Falling back to initial seed.', correlationId: cid);
+      LoggingService.logError('Firestore CivicBook fetch note: $e', correlationId: cid);
     }
 
-    // Fallback seed posts for Dehradun area (all within ~1-6 km of Clock Tower)
-    final now = DateTime.now();
-    final seedPosts = [
-      CivicBookPost(
-        id: 'seed_cb_001',
-        tenantId: AppConstants.defaultTenantId,
-        authorId: 'resident_01',
-        authorName: 'Aarav Sharma',
-        title: 'Overflowing Municipal Dumpster near Astley Hall',
-        description:
-            'Solid waste is spilling onto the pedestrian walkway near Astley Hall. Stray animals scattering plastic.',
-        category: 'waste',
-        imageUrl:
-            'https://images.unsplash.com/photo-1530587191325-3db32d826c18?auto=format&fit=crop&w=800&q=80',
-        latitude: 30.3255,
-        longitude: 78.0425,
-        locality: 'Rajpur Road / Astley Hall',
-        upvotesCount: 14,
-        downvotesCount: 1,
-        commentsCount: 3,
-        createdAt: now.subtract(const Duration(hours: 3)),
-      ),
-      CivicBookPost(
-        id: 'seed_cb_002',
-        tenantId: AppConstants.defaultTenantId,
-        authorId: 'resident_02',
-        authorName: 'Priya Nautiyal',
-        title: 'Deep Pothole at Jakhan Diversion',
-        description:
-            'Severe road crater formed after recent rains near Pacific Mall junction. Two-wheelers slipping during rush hour.',
-        category: 'roads',
-        imageUrl:
-            'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=800&q=80',
-        latitude: 30.3480,
-        longitude: 78.0620,
-        locality: 'Jakhan / Rajpur Road',
-        upvotesCount: 28,
-        downvotesCount: 0,
-        commentsCount: 7,
-        createdAt: now.subtract(const Duration(hours: 6)),
-      ),
-      CivicBookPost(
-        id: 'seed_cb_003',
-        tenantId: AppConstants.defaultTenantId,
-        authorId: 'resident_03',
-        authorName: 'Vikram Negi',
-        title: 'Broken Streetlight near Paltan Bazaar Gate',
-        description:
-            'Streetlight pole #32 has been flickering and completely off for the past two nights. Pitch dark alley.',
-        category: 'lights',
-        imageUrl: null,
-        latitude: 30.3220,
-        longitude: 78.0380,
-        locality: 'Paltan Bazaar',
-        upvotesCount: 9,
-        downvotesCount: 0,
-        commentsCount: 2,
-        createdAt: now.subtract(const Duration(hours: 12)),
-      ),
-      CivicBookPost(
-        id: 'seed_cb_004',
-        tenantId: AppConstants.defaultTenantId,
-        authorId: 'resident_04',
-        authorName: 'Sunita Rawat',
-        title: 'Water Pipe Leakage Flooding Subhash Road',
-        description:
-            'Clean drinking water leaking continuously from an underground municipal pipeline connection.',
-        category: 'water',
-        imageUrl:
-            'https://images.unsplash.com/photo-1541888946425-d0fbb186c5f8?auto=format&fit=crop&w=800&q=80',
-        latitude: 30.3290,
-        longitude: 78.0460,
-        locality: 'Subhash Road',
-        upvotesCount: 21,
-        downvotesCount: 1,
-        commentsCount: 5,
-        createdAt: now.subtract(const Duration(hours: 18)),
-      ),
-    ];
+    final realPosts = mergedById.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    state = state.copyWith(allPosts: seedPosts, isLoading: false);
+    await _saveCachedPosts(realPosts);
+    if (!mounted) return;
+    state = state.copyWith(allPosts: realPosts, isLoading: false);
   }
 
   /// Switch spatial feed radius between 3 km (default) and 5 km (expanded)
@@ -240,20 +286,17 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     final currentUser = _ref.read(authProvider).user;
     final uid = currentUser?.uid ?? 'guest_uid';
 
-    // Find post in current state
     final index = state.allPosts.indexWhere((p) => p.id == postId);
     if (index == -1) return;
 
     final post = state.allPosts[index];
     final currentVote = post.currentUserVote;
 
-    // Determine new vote value
     int newVote = value;
     if (currentVote == value) {
       newVote = 0; // Toggle off to neutral
     }
 
-    // Compute updated counts
     int upDelta = 0;
     int downDelta = 0;
 
@@ -269,12 +312,14 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
       currentUserVote: newVote,
     );
 
-    // Optimistic UI update
     final updatedList = List<CivicBookPost>.from(state.allPosts);
     updatedList[index] = updatedPost;
     state = state.copyWith(allPosts: updatedList);
 
-    // Sync to Firestore if online
+    await _saveCachedVote(uid, postId, newVote);
+    await _saveCachedPosts(updatedList);
+
+    // Sync to Firestore if online & authorized
     try {
       if (_firestore != null) {
         final postRef = _firestore
@@ -299,7 +344,9 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
           'downvotesCount': updatedPost.downvotesCount,
         });
       }
-    } catch (_) {}
+    } catch (e) {
+      LoggingService.logError('Firestore vote sync note: $e');
+    }
   }
 
   /// Submit a new CivicBook observation post
@@ -314,8 +361,8 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     LoggingService.logBreadcrumb('Creating CivicBook post: $title', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
-    final authorId = currentUser?.uid ?? 'anon_user';
-    final authorName = currentUser?.displayName ?? 'Local Resident';
+    final authorId = currentUser?.uid ?? 'local_user';
+    final authorName = _resolveDisplayName(currentUser?.displayName);
 
     // 1. Upload photo to Cloudinary if provided
     String? uploadedUrl;
@@ -328,6 +375,8 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
         uploadedUrl = uploadResult.url;
       }
     }
+
+    if (!mounted) return false;
 
     // 2. Apply privacy fuzzing to coordinates (~100m generalization)
     final fuzzed = LocationService.applyPrivacyFuzzing(
@@ -354,54 +403,142 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
       currentUserVote: 1,
     );
 
-    // 3. Save to Firestore
+    // 3. Persist locally and update state immediately
+    final updatedPosts = [newPost, ...state.allPosts];
+    await _saveCachedVote(authorId, newPost.id, 1);
+    await _saveCachedPosts(updatedPosts);
+    if (!mounted) return false;
+    state = state.copyWith(
+      isLoading: false,
+      allPosts: updatedPosts,
+    );
+
+    // 4. Sync to Firestore
     try {
       if (_firestore != null) {
-        await _firestore
+        final postRef = _firestore
             .collection('tenants')
             .doc(AppConstants.defaultTenantId)
             .collection('civicBookPosts')
-            .doc(newPost.id)
-            .set(newPost.toMap());
+            .doc(newPost.id);
+        await postRef.set(newPost.toMap());
+        await postRef.collection('votes').doc(authorId).set({
+          'value': 1,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       }
     } catch (e) {
-      LoggingService.logError('Firestore write error: $e', correlationId: cid);
+      LoggingService.logError('Firestore createPost sync note: $e', correlationId: cid);
     }
-
-    // 4. Update local state
-    state = state.copyWith(
-      isLoading: false,
-      allPosts: [newPost, ...state.allPosts],
-    );
 
     return true;
   }
 
-  /// Add a comment to an existing post
+  /// Load real comments for a specific CivicBook post (Firestore + Real Local Cache)
+  Future<void> loadComments(String postId) async {
+    state = state.copyWith(isLoadingComments: true);
+    final cid = LoggingService.generateCorrelationId();
+
+    final Map<String, CivicComment> merged = {};
+
+    // 1. Fetch live comments from Firestore subcollection
+    try {
+      if (_firestore != null) {
+        final snap = await _firestore
+            .collection('tenants')
+            .doc(AppConstants.defaultTenantId)
+            .collection('civicBookPosts')
+            .doc(postId)
+            .collection('comments')
+            .orderBy('createdAt', descending: true)
+            .get();
+
+        for (final doc in snap.docs) {
+          final comment = CivicComment.fromMap(doc.data(), id: doc.id);
+          merged[doc.id] = comment;
+        }
+      }
+    } catch (e) {
+      LoggingService.logError('Firestore loadComments note: $e', correlationId: cid);
+    }
+
+    // 2. Re-read latest locally persisted + in-memory comments after await to prevent losing concurrent submissions
+    final cached = await _loadCachedComments(postId);
+    for (final c in cached) {
+      merged.putIfAbsent(c.id, () => c);
+    }
+    if (!mounted) return;
+    for (final c in (state.commentsByPost[postId] ?? const <CivicComment>[])) {
+      merged.putIfAbsent(c.id, () => c);
+    }
+
+    final realComments = merged.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    await _saveCachedComments(postId, realComments);
+    if (!mounted) return;
+
+    final updatedMap = Map<String, List<CivicComment>>.from(state.commentsByPost);
+    updatedMap[postId] = realComments;
+
+    // Ensure post commentsCount reflects real comments list size
+    final index = state.allPosts.indexWhere((p) => p.id == postId);
+    List<CivicBookPost> updatedPosts = state.allPosts;
+    if (index != -1 && state.allPosts[index].commentsCount != realComments.length) {
+      updatedPosts = List<CivicBookPost>.from(state.allPosts);
+      updatedPosts[index] = state.allPosts[index].copyWith(commentsCount: realComments.length);
+      await _saveCachedPosts(updatedPosts);
+    }
+
+    if (!mounted) return;
+    state = state.copyWith(
+      commentsByPost: updatedMap,
+      allPosts: updatedPosts,
+      isLoadingComments: false,
+    );
+  }
+
+  /// Add a real comment to an existing post and surface it immediately
   Future<bool> addComment(String postId, String text) async {
-    if (text.trim().isEmpty) return false;
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return false;
 
     final currentUser = _ref.read(authProvider).user;
     final comment = CivicComment(
       id: 'comm_${_uuid.v4().substring(0, 8)}',
       postId: postId,
-      authorId: currentUser?.uid ?? 'anon_user',
-      authorName: currentUser?.displayName ?? 'Resident',
-      text: text.trim(),
+      authorId: currentUser?.uid ?? 'local_user',
+      authorName: _resolveDisplayName(currentUser?.displayName, fallback: 'Resident'),
+      text: trimmed,
       createdAt: DateTime.now(),
     );
 
-    // Update local post comment count
-    final index = state.allPosts.indexWhere((p) => p.id == postId);
+    // 1. Prepend comment immediately to state so user sees it instantly
+    final existingComments = List<CivicComment>.from(state.commentsByPost[postId] ?? []);
+    final updatedComments = [comment, ...existingComments];
+
+    final updatedMap = Map<String, List<CivicComment>>.from(state.commentsByPost);
+    updatedMap[postId] = updatedComments;
+
+    // 2. Update post commentsCount cleanly
+    final updatedPosts = List<CivicBookPost>.from(state.allPosts);
+    final index = updatedPosts.indexWhere((p) => p.id == postId);
     if (index != -1) {
-      final post = state.allPosts[index];
-      final updatedPost = post.copyWith(commentsCount: post.commentsCount + 1);
-      final list = List<CivicBookPost>.from(state.allPosts);
-      list[index] = updatedPost;
-      state = state.copyWith(allPosts: list);
+      updatedPosts[index] = updatedPosts[index].copyWith(
+        commentsCount: updatedComments.length,
+      );
     }
 
-    // Save to Firestore subcollection
+    state = state.copyWith(
+      commentsByPost: updatedMap,
+      allPosts: updatedPosts,
+    );
+
+    // 3. Persist locally so user's interaction always survives restarts
+    await _saveCachedComments(postId, updatedComments);
+    await _saveCachedPosts(updatedPosts);
+
+    // 4. Save to Firestore subcollection
     try {
       if (_firestore != null) {
         final postRef = _firestore
@@ -411,9 +548,13 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
             .doc(postId);
 
         await postRef.collection('comments').doc(comment.id).set(comment.toMap());
-        await postRef.update({'commentsCount': FieldValue.increment(1)});
+        try {
+          await postRef.update({'commentsCount': updatedComments.length});
+        } catch (_) {}
       }
-    } catch (_) {}
+    } catch (e) {
+      LoggingService.logError('Firestore addComment sync note: $e');
+    }
 
     return true;
   }
@@ -421,6 +562,7 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
 
 /// Global Riverpod Provider for CivicBook Feed
 final civicBookProvider = StateNotifierProvider<CivicBookNotifier, CivicBookState>((ref) {
+  ref.watch(authProvider.select((s) => s.user?.uid));
   FirebaseFirestore? firestore;
   try {
     firestore = FirebaseFirestore.instance;

@@ -73,9 +73,9 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
             : TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildCaseList(context, allCases),
-                  _buildCaseList(context, activeCases),
-                  _buildCaseList(context, resolvedCases),
+                  _buildCaseList(context, allCases, notifier),
+                  _buildCaseList(context, activeCases, notifier),
+                  _buildCaseList(context, resolvedCases, notifier),
                 ],
               ),
       ),
@@ -89,46 +89,67 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
     );
   }
 
-  Widget _buildCaseList(BuildContext context, List<CivicFlowCase> cases) {
+  Widget _buildCaseList(
+    BuildContext context,
+    List<CivicFlowCase> cases,
+    CivicFlowNotifier notifier,
+  ) {
     if (cases.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.assignment_turned_in_outlined, size: 64, color: EvoraColors.outline),
-              const SizedBox(height: 16),
-              const Text(
-                'No cases found in this view',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+      return RefreshIndicator(
+        onRefresh: () => notifier.fetchCitizenCases(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.assignment_turned_in_outlined, size: 64, color: EvoraColors.outline),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No cases found in this view',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Track and follow up on official municipal grievances filed across your ward.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: EvoraColors.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 20),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text('File First Case'),
+                          onPressed: () => context.push('/civic-flow/wizard'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Track and follow up on official municipal grievances filed across your ward.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: EvoraColors.onSurfaceVariant),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('File First Case'),
-                onPressed: () => context.push('/civic-flow/wizard'),
-              ),
-            ],
-          ),
+            );
+          },
         ),
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-      itemCount: cases.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 14),
-      itemBuilder: (context, index) {
-        final c = cases[index];
-        return _buildCaseCard(context, c);
-      },
+    return RefreshIndicator(
+      onRefresh: () => notifier.fetchCitizenCases(),
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+        itemCount: cases.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 14),
+        itemBuilder: (context, index) {
+          final c = cases[index];
+          return _buildCaseCard(context, c);
+        },
+      ),
     );
   }
 
