@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../../core/utils/auth_guard.dart';
 import '../../../services/location_service.dart';
 import '../models/civic_book_model.dart';
 import '../services/civic_book_service.dart';
@@ -144,7 +145,17 @@ class CivicBookFeedScreen extends ConsumerWidget {
                                           ElevatedButton.icon(
                                             icon: const Icon(Icons.add),
                                             label: const Text('Post First Observation'),
-                                            onPressed: () => context.push('/civic-book/create'),
+                                            onPressed: () async {
+                                              final ok = await AuthGuard.requireLogin(
+                                                context,
+                                                ref,
+                                                actionDescription:
+                                                    'Sign in to post a community observation to CivicBook.',
+                                              );
+                                              if (ok && context.mounted) {
+                                                context.push('/civic-book/create');
+                                              }
+                                            },
                                           ),
                                         ],
                                       ),
@@ -163,7 +174,7 @@ class CivicBookFeedScreen extends ConsumerWidget {
                             separatorBuilder: (context, index) => const SizedBox(height: 14),
                             itemBuilder: (context, index) {
                               final post = posts[index];
-                              return _buildPostCard(context, post, notifier);
+                              return _buildPostCard(context, ref, post, notifier);
                             },
                           ),
                         ),
@@ -176,7 +187,16 @@ class CivicBookFeedScreen extends ConsumerWidget {
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_a_photo_outlined),
         label: const Text('Post Observation'),
-        onPressed: () => context.push('/civic-book/create'),
+        onPressed: () async {
+          final ok = await AuthGuard.requireLogin(
+            context,
+            ref,
+            actionDescription: 'Sign in to post a community observation to CivicBook.',
+          );
+          if (ok && context.mounted) {
+            context.push('/civic-book/create');
+          }
+        },
       ),
     );
   }
@@ -239,7 +259,12 @@ class CivicBookFeedScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildPostCard(BuildContext context, CivicBookPost post, CivicBookNotifier notifier) {
+  Widget _buildPostCard(
+    BuildContext context,
+    WidgetRef ref,
+    CivicBookPost post,
+    CivicBookNotifier notifier,
+  ) {
     final distanceText = post.distanceKm != null
         ? LocationService.formatDistance(post.distanceKm!)
         : 'Nearby';
@@ -384,7 +409,16 @@ class CivicBookFeedScreen extends ConsumerWidget {
                             size: 18,
                             color: post.currentUserVote == 1 ? EvoraColors.primary : EvoraColors.onSurfaceVariant,
                           ),
-                          onPressed: () => notifier.toggleVote(post.id, 1),
+                          onPressed: () async {
+                            final ok = await AuthGuard.requireLogin(
+                              context,
+                              ref,
+                              actionDescription: 'Sign in to upvote community observations in CivicBook.',
+                            );
+                            if (ok) {
+                              await notifier.toggleVote(post.id, 1);
+                            }
+                          },
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           constraints: const BoxConstraints(),
@@ -407,7 +441,16 @@ class CivicBookFeedScreen extends ConsumerWidget {
                             size: 18,
                             color: post.currentUserVote == -1 ? EvoraColors.error : EvoraColors.onSurfaceVariant,
                           ),
-                          onPressed: () => notifier.toggleVote(post.id, -1),
+                          onPressed: () async {
+                            final ok = await AuthGuard.requireLogin(
+                              context,
+                              ref,
+                              actionDescription: 'Sign in to vote on community observations in CivicBook.',
+                            );
+                            if (ok) {
+                              await notifier.toggleVote(post.id, -1);
+                            }
+                          },
                           visualDensity: VisualDensity.compact,
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           constraints: const BoxConstraints(),
@@ -443,11 +486,19 @@ class CivicBookFeedScreen extends ConsumerWidget {
                       minimumSize: Size.zero,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
                     ),
-                    onPressed: () {
-                      // Pre-fill CivicFlow wizard with this observation
-                      context.push(
-                        '/civic-flow/wizard?sourcePostId=${post.id}&category=${Uri.encodeComponent(post.category)}&title=${Uri.encodeComponent(post.title)}&locality=${Uri.encodeComponent(post.locality)}',
+                    onPressed: () async {
+                      final ok = await AuthGuard.requireLogin(
+                        context,
+                        ref,
+                        actionDescription:
+                            'Sign in to escalate this observation into a formal CivicFlow grievance.',
                       );
+                      if (ok && context.mounted) {
+                        // Pre-fill CivicFlow wizard with this observation
+                        context.push(
+                          '/civic-flow/wizard?sourcePostId=${post.id}&category=${Uri.encodeComponent(post.category)}&title=${Uri.encodeComponent(post.title)}&locality=${Uri.encodeComponent(post.locality)}',
+                        );
+                      }
                     },
                   ),
                 ],

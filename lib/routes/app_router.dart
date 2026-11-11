@@ -52,16 +52,22 @@ GoRouter createAppRouter({String initialLocation = '/splash'}) {
       GoRoute(
         path: '/login',
         name: 'login',
-        pageBuilder: (context, state) => _buildFadePage(
-          context: context,
-          state: state,
-          child: const LoginScreen(),
-        ),
+        pageBuilder: (context, state) {
+          final returnOnSuccess = state.uri.queryParameters['returnOnSuccess'] == 'true';
+          return _buildFadePage(
+            context: context,
+            state: state,
+            child: LoginScreen(returnOnSuccess: returnOnSuccess),
+          );
+        },
       ),
       GoRoute(
         path: '/signup',
         name: 'signup',
-        builder: (context, state) => const SignupScreen(),
+        builder: (context, state) {
+          final returnOnSuccess = state.uri.queryParameters['returnOnSuccess'] == 'true';
+          return SignupScreen(returnOnSuccess: returnOnSuccess);
+        },
       ),
       GoRoute(
         path: '/home',

@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../../core/utils/auth_guard.dart';
 import '../../../services/location_service.dart';
+import '../../auth/services/auth_service.dart';
 import '../models/civic_book_model.dart';
 import '../services/civic_book_service.dart';
 
@@ -35,9 +37,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   }
 
   Future<void> _submitComment() async {
+    final authed = await AuthGuard.requireLogin(
+      context,
+      ref,
+      actionDescription: 'Sign in to post comments on CivicBook observations.',
+    );
+    if (!authed) return;
+
     final text = _commentController.text.trim();
     if (text.isEmpty || _isSending) return;
 
+    if (!mounted) return;
     setState(() => _isSending = true);
     final ok = await ref.read(civicBookProvider.notifier).addComment(widget.postId, text);
     if (!mounted) return;
@@ -45,7 +55,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
 
     if (ok) {
       _commentController.clear();
-      FocusScope.of(context).unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
     }
   }
 
@@ -62,6 +72,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(civicBookProvider);
     final notifier = ref.read(civicBookProvider.notifier);
+    final isAuthenticated = ref.watch(authProvider.select((s) => s.isAuthenticated));
     final postIndex = state.allPosts.indexWhere((p) => p.id == widget.postId);
 
     if (postIndex == -1) {
@@ -207,7 +218,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         ? EvoraColors.primary
                                         : EvoraColors.onSurfaceVariant,
                                   ),
-                                  onPressed: () => notifier.toggleVote(post.id, 1),
+                                  onPressed: () async {
+                                    final ok = await AuthGuard.requireLogin(
+                                      context,
+                                      ref,
+                                      actionDescription:
+                                          'Sign in to upvote community observations.',
+                                    );
+                                    if (ok) {
+                                      await notifier.toggleVote(post.id, 1);
+                                    }
+                                  },
                                   visualDensity: VisualDensity.compact,
                                 ),
                                 Text(
@@ -232,7 +253,17 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                         ? EvoraColors.error
                                         : EvoraColors.onSurfaceVariant,
                                   ),
-                                  onPressed: () => notifier.toggleVote(post.id, -1),
+                                  onPressed: () async {
+                                    final ok = await AuthGuard.requireLogin(
+                                      context,
+                                      ref,
+                                      actionDescription:
+                                          'Sign in to vote on community observations.',
+                                    );
+                                    if (ok) {
+                                      await notifier.toggleVote(post.id, -1);
+                                    }
+                                  },
                                   visualDensity: VisualDensity.compact,
                                 ),
                               ],
@@ -282,10 +313,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 minimumSize: Size.zero,
                               ),
-                              onPressed: () {
-                                context.push(
-                                  '/civic-flow/wizard?sourcePostId=${post.id}&category=${Uri.encodeComponent(post.category)}&title=${Uri.encodeComponent(post.title)}&locality=${Uri.encodeComponent(post.locality)}',
+                              onPressed: () async {
+                                final ok = await AuthGuard.requireLogin(
+                                  context,
+                                  ref,
+                                  actionDescription:
+                                      'Sign in to escalate this observation into a formal CivicFlow grievance.',
                                 );
+                                if (ok && context.mounted) {
+                                  context.push(
+                                    '/civic-flow/wizard?sourcePostId=${post.id}&category=${Uri.encodeComponent(post.category)}&title=${Uri.encodeComponent(post.title)}&locality=${Uri.encodeComponent(post.locality)}',
+                                  );
+                                }
                               },
                               child: const Text('Escalate', style: TextStyle(fontSize: 12)),
                             ),
@@ -370,13 +409,24 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   Expanded(
                     child: TextField(
                       controller: _commentController,
+                      readOnly: !isAuthenticated,
+                      onTap: !isAuthenticated
+                          ? () => AuthGuard.requireLogin(
+                                context,
+                                ref,
+                                actionDescription:
+                                    'Sign in to post comments on CivicBook observations.',
+                              )
+                          : null,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.send,
                       onSubmitted: (_) => _submitComment(),
-                      decoration: const InputDecoration(
-                        hintText: 'Add a real comment to the discussion...',
+                      decoration: InputDecoration(
+                        hintText: isAuthenticated
+                            ? 'Add a real comment to the discussion...'
+                            : 'Sign in to add a comment...',
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
                     ),
                   ),

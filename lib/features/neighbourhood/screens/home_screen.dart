@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../../core/utils/auth_guard.dart';
 import '../../../services/cloudinary_service.dart';
 import '../../auth/services/auth_service.dart';
 
@@ -21,6 +22,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _uploadStatus;
 
   Future<void> _testCloudinaryUpload() async {
+    final authed = await AuthGuard.requireLogin(
+      context,
+      ref,
+      actionDescription: 'Sign in to upload verification photos to EVORA.',
+    );
+    if (!authed) return;
+
     final pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
@@ -72,16 +80,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_outlined),
-            tooltip: 'Sign Out',
-            onPressed: () async {
-              await ref.read(authProvider.notifier).signOut();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-          ),
+          if (authState.isAuthenticated)
+            IconButton(
+              icon: const Icon(Icons.logout_outlined),
+              tooltip: 'Sign Out',
+              onPressed: () async {
+                await ref.read(authProvider.notifier).signOut();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Signed out. You are now browsing in guest mode.'),
+                    ),
+                  );
+                }
+              },
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(
+                icon: const Icon(Icons.login, size: 18),
+                label: const Text(
+                  'Sign In',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                onPressed: () => context.push('/login?returnOnSuccess=true'),
+              ),
+            ),
         ],
       ),
       body: SafeArea(
@@ -203,7 +228,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       backgroundColor: EvoraColors.secondary,
                       foregroundColor: EvoraColors.onSecondary,
                     ),
-                    onPressed: () {},
+                    onPressed: () async {
+                      final authed = await AuthGuard.requireLogin(
+                        context,
+                        ref,
+                        actionDescription:
+                            'Sign in to complete daily eco actions and earn Eco Coins.',
+                      );
+                      if (authed && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Daily eco action rewards unlock in Phase 5 Eco Missions!',
+                            ),
+                          ),
+                        );
+                      }
+                    },
                     child: const Text('Mark Completed (+10 Eco Coins)'),
                   ),
                 ],
@@ -327,7 +368,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   icon: Icons.swap_calls_outlined,
                   color: EvoraColors.tertiaryContainer,
                   iconColor: Colors.white,
-                  onTap: () {},
+                  onTap: () async {
+                    final authed = await AuthGuard.requireLogin(
+                      context,
+                      ref,
+                      actionDescription: 'Sign in to explore personalized sustainable swaps in EvoSwitch.',
+                    );
+                    if (authed && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('EvoSwitch engine arrives in Phase 4!')),
+                      );
+                    }
+                  },
                 ),
                 _buildServiceCard(
                   context,
@@ -335,7 +387,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   subtitle: 'Recycling & e-waste hubs',
                   icon: Icons.delete_outline,
                   color: EvoraColors.surfaceContainerHigh,
-                  onTap: () {},
+                  onTap: () async {
+                    final authed = await AuthGuard.requireLogin(
+                      context,
+                      ref,
+                      actionDescription: 'Sign in to interact with verified recycling & e-waste hubs.',
+                    );
+                    if (authed && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Circular Waste Directory arrives in Phase 4!')),
+                      );
+                    }
+                  },
                 ),
               ],
             ),

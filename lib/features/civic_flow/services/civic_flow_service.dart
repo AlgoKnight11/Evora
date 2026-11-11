@@ -116,12 +116,17 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
   /// Fetches real cases filed by the current authenticated citizen (zero static sample data)
   Future<void> fetchCitizenCases() async {
+    final currentUser = _ref.read(authProvider).user;
+    if (currentUser == null) {
+      state = state.copyWith(citizenCases: [], isLoading: false, clearError: true);
+      return;
+    }
+
     state = state.copyWith(isLoading: true, clearError: true);
     final cid = LoggingService.generateCorrelationId();
     LoggingService.logBreadcrumb('Fetching real citizen CivicFlow cases', correlationId: cid);
 
-    final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'local_user';
+    final uid = currentUser.uid;
 
     final Map<String, CivicFlowCase> mergedById = {};
 
@@ -133,12 +138,12 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
     // 2. Fetch live cases from Firestore (single-field filter avoids composite index errors)
     try {
-      if (_firestore != null && currentUser?.uid != null) {
+      if (_firestore != null) {
         final querySnapshot = await _firestore
             .collection('tenants')
             .doc(AppConstants.defaultTenantId)
             .collection('civicFlowCases')
-            .where('citizenId', isEqualTo: currentUser!.uid)
+            .where('citizenId', isEqualTo: currentUser.uid)
             .get();
 
         for (final doc in querySnapshot.docs) {
@@ -183,9 +188,16 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
     LoggingService.logBreadcrumb('Submitting formal CivicFlow case: $category', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'local_user';
-    final citizenName = _resolveDisplayName(currentUser?.displayName);
-    final citizenPhone = currentUser?.phoneNumber;
+    if (currentUser == null) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Sign in required to file a formal grievance.',
+      );
+      return null;
+    }
+    final uid = currentUser.uid;
+    final citizenName = _resolveDisplayName(currentUser.displayName);
+    final citizenPhone = currentUser.phoneNumber;
 
     // 2. Upload photo evidence to Cloudinary with EXIF stripping
     String? imageUrl;
@@ -273,11 +285,12 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
   /// Citizen responds to a "Needs Information" request
   Future<bool> respondToNeedsInfo(String caseId, String responseText) async {
+    final currentUser = _ref.read(authProvider).user;
+    if (currentUser == null) return false;
     final index = state.citizenCases.indexWhere((c) => c.id == caseId);
     if (index == -1) return false;
 
-    final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'local_user';
+    final uid = currentUser.uid;
 
     final targetCase = state.citizenCases[index];
     final now = DateTime.now();
@@ -323,11 +336,12 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
   /// Confirm resolution or request reopening
   Future<bool> verifyResolution(String caseId, {required bool isSatisfied, String? feedback}) async {
+    final currentUser = _ref.read(authProvider).user;
+    if (currentUser == null) return false;
     final index = state.citizenCases.indexWhere((c) => c.id == caseId);
     if (index == -1) return false;
 
-    final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'local_user';
+    final uid = currentUser.uid;
 
     final targetCase = state.citizenCases[index];
     final now = DateTime.now();

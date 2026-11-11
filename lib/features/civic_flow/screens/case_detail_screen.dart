@@ -218,9 +218,7 @@ class _CaseDetailScreenState extends ConsumerState<CaseDetailScreen> {
                                 setState(() => _isActionLoading = false);
                                 if (ok) {
                                   _infoResponseController.clear();
-                                  if (context.mounted) {
-                                    FocusScope.of(context).unfocus();
-                                  }
+                                  FocusManager.instance.primaryFocus?.unfocus();
                                 }
                               },
                         child: _isActionLoading

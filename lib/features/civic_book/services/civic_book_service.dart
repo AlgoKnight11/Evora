@@ -126,11 +126,11 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     await refreshPosts();
   }
 
-  Future<List<CivicBookPost>> _loadCachedPosts(String uid) async {
+  Future<List<CivicBookPost>> _loadCachedPosts(String? uid) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final rawPosts = prefs.getString(_postsCacheKey);
-      final rawVotes = prefs.getString(_votesCacheKey(uid));
+      final rawVotes = uid != null ? prefs.getString(_votesCacheKey(uid)) : null;
 
       Map<String, int> userVotes = {};
       if (rawVotes != null) {
@@ -210,7 +210,7 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     LoggingService.logBreadcrumb('Refreshing real CivicBook community posts', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'guest_uid';
+    final uid = currentUser?.uid;
 
     // 1. Load real cached posts (e.g. posts created while offline or dev-test phone mode)
     final Map<String, CivicBookPost> mergedById = {};
@@ -234,15 +234,17 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
           if (doc.id.startsWith('seed_')) continue;
 
           int userVote = 0;
-          try {
-            final voteDoc = await doc.reference.collection('votes').doc(uid).get();
-            if (voteDoc.exists) {
-              userVote = (voteDoc.data()?['value'] as num?)?.toInt() ?? 0;
-            } else {
+          if (uid != null) {
+            try {
+              final voteDoc = await doc.reference.collection('votes').doc(uid).get();
+              if (voteDoc.exists) {
+                userVote = (voteDoc.data()?['value'] as num?)?.toInt() ?? 0;
+              } else {
+                userVote = mergedById[doc.id]?.currentUserVote ?? 0;
+              }
+            } catch (_) {
               userVote = mergedById[doc.id]?.currentUserVote ?? 0;
             }
-          } catch (_) {
-            userVote = mergedById[doc.id]?.currentUserVote ?? 0;
           }
 
           final firestorePost = CivicBookPost.fromMap(
@@ -284,7 +286,8 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
   /// Cast an Upvote (+1), Downvote (-1), or Neutral (0)
   Future<void> toggleVote(String postId, int value) async {
     final currentUser = _ref.read(authProvider).user;
-    final uid = currentUser?.uid ?? 'guest_uid';
+    if (currentUser == null) return;
+    final uid = currentUser.uid;
 
     final index = state.allPosts.indexWhere((p) => p.id == postId);
     if (index == -1) return;
@@ -361,8 +364,12 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     LoggingService.logBreadcrumb('Creating CivicBook post: $title', correlationId: cid);
 
     final currentUser = _ref.read(authProvider).user;
-    final authorId = currentUser?.uid ?? 'local_user';
-    final authorName = _resolveDisplayName(currentUser?.displayName);
+    if (currentUser == null) {
+      state = state.copyWith(isLoading: false, errorMessage: 'Sign in required to post.');
+      return false;
+    }
+    final authorId = currentUser.uid;
+    final authorName = _resolveDisplayName(currentUser.displayName);
 
     // 1. Upload photo to Cloudinary if provided
     String? uploadedUrl;
@@ -504,11 +511,12 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     if (trimmed.isEmpty) return false;
 
     final currentUser = _ref.read(authProvider).user;
+    if (currentUser == null) return false;
     final comment = CivicComment(
       id: 'comm_${_uuid.v4().substring(0, 8)}',
       postId: postId,
-      authorId: currentUser?.uid ?? 'local_user',
-      authorName: _resolveDisplayName(currentUser?.displayName, fallback: 'Resident'),
+      authorId: currentUser.uid,
+      authorName: _resolveDisplayName(currentUser.displayName, fallback: 'Resident'),
       text: trimmed,
       createdAt: DateTime.now(),
     );

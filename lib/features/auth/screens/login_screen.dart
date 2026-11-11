@@ -6,7 +6,9 @@ import '../../../core/theme/evora_colors.dart';
 import '../services/auth_service.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  final bool returnOnSuccess;
+
+  const LoginScreen({super.key, this.returnOnSuccess = false});
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -132,6 +134,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Scaffold(
+      appBar: (widget.returnOnSuccess || context.canPop())
+          ? AppBar(
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Back to browsing',
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop(false);
+                  } else {
+                    context.go('/home');
+                  }
+                },
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop(false);
+                    } else {
+                      context.go('/home');
+                    }
+                  },
+                  child: const Text('Browse as Guest'),
+                ),
+              ],
+            )
+          : AppBar(
+              automaticallyImplyLeading: false,
+              actions: [
+                TextButton(
+                  onPressed: () => context.go('/home'),
+                  child: const Text('Browse as Guest'),
+                ),
+              ],
+            ),
       body: SafeArea(
         bottom: true,
         maintainBottomViewPadding: true,
@@ -308,7 +345,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                           _passwordController.text,
                                         );
                                     if (success && context.mounted) {
-                                      context.go('/home');
+                                      if (widget.returnOnSuccess && context.canPop()) {
+                                        context.pop(true);
+                                      } else {
+                                        context.go('/home');
+                                      }
                                     }
                                   },
                             child: authState.isLoading
@@ -393,7 +434,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                           .read(authProvider.notifier)
                                           .verifyOtp(_otpController.text.trim());
                                       if (verified && context.mounted) {
-                                        context.go('/home');
+                                        if (widget.returnOnSuccess && context.canPop()) {
+                                          context.pop(true);
+                                        } else {
+                                          context.go('/home');
+                                        }
                                       }
                                     },
                               child: const Text('Verify & Enter'),
@@ -441,7 +486,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               .read(authProvider.notifier)
                               .signInWithGoogle();
                           if (success && context.mounted) {
-                            context.go('/home');
+                            if (widget.returnOnSuccess && context.canPop()) {
+                              context.pop(true);
+                            } else {
+                              context.go('/home');
+                            }
                           }
                         },
                 ),
@@ -454,7 +503,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   children: [
                     Text("Don't have an account?", style: textTheme.bodySmall),
                     TextButton(
-                      onPressed: () => context.push('/signup'),
+                      onPressed: () async {
+                        final signedUp = await context.push<bool>(
+                          widget.returnOnSuccess
+                              ? '/signup?returnOnSuccess=true'
+                              : '/signup',
+                        );
+                        if (signedUp == true &&
+                            widget.returnOnSuccess &&
+                            context.mounted &&
+                            context.canPop()) {
+                          context.pop(true);
+                        }
+                      },
                       child: const Text('Register here'),
                     ),
                   ],

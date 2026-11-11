@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../../core/utils/auth_guard.dart';
+import '../../auth/services/auth_service.dart';
 import '../models/civic_flow_model.dart';
 import '../services/civic_flow_service.dart';
 
@@ -32,6 +34,7 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
   Widget build(BuildContext context) {
     final state = ref.watch(civicFlowProvider);
     final notifier = ref.read(civicFlowProvider.notifier);
+    final isAuthenticated = ref.watch(authProvider.select((s) => s.isAuthenticated));
 
     final allCases = state.citizenCases;
     final activeCases = allCases.where((c) =>
@@ -73,9 +76,9 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
             : TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildCaseList(context, allCases, notifier),
-                  _buildCaseList(context, activeCases, notifier),
-                  _buildCaseList(context, resolvedCases, notifier),
+                  _buildCaseList(context, allCases, notifier, isAuthenticated),
+                  _buildCaseList(context, activeCases, notifier, isAuthenticated),
+                  _buildCaseList(context, resolvedCases, notifier, isAuthenticated),
                 ],
               ),
       ),
@@ -84,7 +87,17 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text('File Grievance'),
-        onPressed: () => context.push('/civic-flow/wizard'),
+        onPressed: () async {
+          final ok = await AuthGuard.requireLogin(
+            context,
+            ref,
+            actionDescription:
+                'Sign in to register a formal municipal grievance in CivicFlow.',
+          );
+          if (ok && context.mounted) {
+            context.push('/civic-flow/wizard');
+          }
+        },
       ),
     );
   }
@@ -93,7 +106,50 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
     BuildContext context,
     List<CivicFlowCase> cases,
     CivicFlowNotifier notifier,
+    bool isAuthenticated,
   ) {
+    if (!isAuthenticated) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_person_outlined, size: 64, color: EvoraColors.primary),
+              const SizedBox(height: 16),
+              const Text(
+                'Sign in to file & track grievances',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Register official municipal grievances with CivicFlow and track live resolution updates under your EVORA account.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: EvoraColors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.login),
+                label: const Text('Sign In & File Grievance'),
+                onPressed: () async {
+                  final ok = await AuthGuard.requireLogin(
+                    context,
+                    ref,
+                    actionDescription:
+                        'Sign in to file and track formal municipal grievances in CivicFlow.',
+                  );
+                  if (ok && context.mounted) {
+                    context.push('/civic-flow/wizard');
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     if (cases.isEmpty) {
       return RefreshIndicator(
         onRefresh: () => notifier.fetchCitizenCases(),

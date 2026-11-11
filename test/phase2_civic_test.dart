@@ -10,7 +10,7 @@ import 'package:evora/features/civic_flow/services/civic_flow_service.dart';
 import 'package:evora/services/location_service.dart';
 
 class _TestAuthNotifier extends AuthNotifier {
-  _TestAuthNotifier(EvoraUser testUser) : super(null) {
+  _TestAuthNotifier(EvoraUser? testUser) : super(null) {
     state = AuthState(user: testUser);
   }
 }
@@ -202,6 +202,46 @@ void main() {
       final calmState = CivicFlowState(recentSubmissionTimes: oldTimes);
       expect(calmState.isRateLimited, isFalse);
       expect(calmState.rateLimitCooldownSeconds, 0);
+    });
+  });
+
+  group('Phase 2 Guest Browsing & Auth Guard Tests', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('Guest users cannot create posts, comment, or submit CivicFlow grievances', () async {
+      final guestContainer = ProviderContainer(
+        overrides: [
+          authProvider.overrideWith((ref) => _TestAuthNotifier(null)),
+          civicBookProvider.overrideWith((ref) => CivicBookNotifier(ref, null, false)),
+          civicFlowProvider.overrideWith((ref) => CivicFlowNotifier(ref, null, false)),
+        ],
+      );
+      addTearDown(guestContainer.dispose);
+
+      final cbNotifier = guestContainer.read(civicBookProvider.notifier);
+      final cfNotifier = guestContainer.read(civicFlowProvider.notifier);
+
+      final postCreated = await cbNotifier.createPost(
+        title: 'Guest Post Attempt',
+        description: 'Should be blocked until login',
+        category: 'waste',
+      );
+      expect(postCreated, isFalse);
+      expect(guestContainer.read(civicBookProvider).allPosts, isEmpty);
+
+      final commented = await cbNotifier.addComment('any_post', 'Guest comment attempt');
+      expect(commented, isFalse);
+
+      final caseNumber = await cfNotifier.submitCase(
+        category: 'Solid Waste',
+        subcategory: 'Garbage Dump Overflow',
+        description: 'Guest should be required to sign in before filing grievances.',
+        locality: 'Dehradun Central',
+      );
+      expect(caseNumber, isNull);
+      expect(guestContainer.read(civicFlowProvider).citizenCases, isEmpty);
     });
   });
 }

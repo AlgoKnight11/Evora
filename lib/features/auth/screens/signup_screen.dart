@@ -5,7 +5,9 @@ import '../../../core/theme/evora_colors.dart';
 import '../services/auth_service.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
-  const SignupScreen({super.key});
+  final bool returnOnSuccess;
+
+  const SignupScreen({super.key, this.returnOnSuccess = false});
 
   @override
   ConsumerState<SignupScreen> createState() => _SignupScreenState();
@@ -190,7 +192,11 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                               locality: _localityController.text.trim(),
                             );
                         if (success && context.mounted) {
-                          context.go('/home');
+                          if (widget.returnOnSuccess && context.canPop()) {
+                            context.pop(true);
+                          } else {
+                            context.go('/home');
+                          }
                         }
                       },
                 child: authState.isLoading

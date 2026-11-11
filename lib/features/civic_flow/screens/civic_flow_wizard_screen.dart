@@ -284,6 +284,41 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAuthenticated = ref.watch(authProvider.select((s) => s.isAuthenticated));
+    if (!isAuthenticated) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('File Formal Grievance')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_person_outlined, size: 56, color: EvoraColors.primary),
+                const SizedBox(height: 16),
+                const Text(
+                  'Sign In Required',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please sign in or register to submit a formal municipal grievance in CivicFlow.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: EvoraColors.onSurfaceVariant),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.login),
+                  label: const Text('Sign In / Register'),
+                  onPressed: () => context.push<bool>('/login?returnOnSuccess=true'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final civicFlowState = ref.watch(civicFlowProvider);
 
     return Scaffold(

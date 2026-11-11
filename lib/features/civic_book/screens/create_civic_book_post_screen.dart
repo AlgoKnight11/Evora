@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../auth/services/auth_service.dart';
 import '../services/civic_book_service.dart';
 
 class CreateCivicBookPostScreen extends ConsumerStatefulWidget {
@@ -137,6 +138,41 @@ class _CreateCivicBookPostScreenState
 
   @override
   Widget build(BuildContext context) {
+    final isAuthenticated = ref.watch(authProvider.select((s) => s.isAuthenticated));
+    if (!isAuthenticated) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('New Observation')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_person_outlined, size: 56, color: EvoraColors.primary),
+                const SizedBox(height: 16),
+                const Text(
+                  'Sign In Required',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please sign in or register to post a new neighborhood observation to CivicBook.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: EvoraColors.onSurfaceVariant),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.login),
+                  label: const Text('Sign In / Register'),
+                  onPressed: () => context.push<bool>('/login?returnOnSuccess=true'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final location = ref.watch(civicBookProvider).userLocation;
 
     return Scaffold(

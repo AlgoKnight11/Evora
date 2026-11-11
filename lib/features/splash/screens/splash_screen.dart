@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/evora_colors.dart';
@@ -28,7 +27,7 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _exitScale;
 
   Timer? _navigationTimer;
-  String _destinationRoute = '/login';
+  String _destinationRoute = '/home';
 
   @override
   void initState() {
@@ -118,28 +117,20 @@ class _SplashScreenState extends State<SplashScreen>
       final prefs = await SharedPreferences.getInstance();
       final hasCompletedOnboarding =
           prefs.getBool('has_completed_onboarding') ?? false;
-      final isAuthenticated = prefs.getBool('is_authenticated') ?? false;
-      User? currentUser;
-      try {
-        currentUser = FirebaseAuth.instance.currentUser;
-      } catch (_) {}
 
-      debugPrint(
-        '[Splash] hasCompletedOnboarding: $hasCompletedOnboarding, '
-        'isAuthenticated: $isAuthenticated, currentUser: ${currentUser?.uid}',
-      );
+      debugPrint('[Splash] hasCompletedOnboarding: $hasCompletedOnboarding');
 
       if (!hasCompletedOnboarding) {
         _destinationRoute = '/onboarding';
-      } else if (isAuthenticated || currentUser != null) {
-        _destinationRoute = '/home';
       } else {
-        _destinationRoute = '/login';
+        // Guests land directly on the Home dashboard and only authenticate
+        // when performing interactive actions (CivicBook / CivicFlow).
+        _destinationRoute = '/home';
       }
       debugPrint('[Splash] Resolved destination route: $_destinationRoute');
     } catch (e, stack) {
       debugPrint('[Splash] Error resolving destination: $e\n$stack');
-      _destinationRoute = '/login';
+      _destinationRoute = '/home';
     }
   }
 
