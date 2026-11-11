@@ -62,4 +62,23 @@ class AppConstants {
   static const int maxOtpRequestsPerHour = 5;
   static const int maxCasesPerTenMinutes = 3;
   static const int maxEcoBuddyMessagesPerFiveMinutes = 15;
+
+  // Phase 3: AI Engine & Duplicate Detection Constants
+  static const String geminiInteractionsEndpoint =
+      'https://generativelanguage.googleapis.com/v1beta/interactions';
+  static const String geminiEmbeddingsEndpoint =
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent';
+  static const String geminiTextEmbeddingFallbackEndpoint =
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent';
+  static const String geminiApiRevision = '2026-05-20';
+  static const String geminiVisionModel = 'gemini-3.8-flash';
+  static const List<String> geminiVisionFallbackModels = [
+    geminiVisionModel,
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+  ];
+  static const int geminiEmbeddingDimensions = 256;
+  static const double duplicateDetectionRadiusKm = 0.5; // 500 meters
+  static const double duplicateSimilarityThreshold = 0.78;
+  static const int maxConcurrentAiRequests = 3;
 }

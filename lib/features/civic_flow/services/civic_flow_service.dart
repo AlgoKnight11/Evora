@@ -10,6 +10,7 @@ import '../../../services/location_service.dart';
 import '../../../services/logging_service.dart';
 import '../../auth/services/auth_service.dart';
 import '../models/civic_flow_model.dart';
+import '../models/civic_taxonomy.dart';
 
 /// State of the Citizen's CivicFlow Grievance Cases
 class CivicFlowState {
@@ -173,6 +174,13 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
     String? landmark,
     File? imageFile,
     String? sourceCivicBookPostId,
+    String priority = 'medium',
+    String? assignedDepartment,
+    List<String> requiredDepartments = const [],
+    Map<String, String> departmentReasons = const {},
+    double? aiConfidence,
+    int piiRedactedCount = 0,
+    List<double>? embeddingVector,
   }) async {
     // 1. Enforce sliding window rate limit
     if (state.isRateLimited) {
@@ -213,17 +221,38 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
     if (!mounted) return null;
 
+    // Resolve authoritative Lead & Co-Assigned Departments
+    final normalizedCategory = CivicTaxonomy.normalizeCategory(category);
+    final resolvedLeadDept = CivicTaxonomy.normalizeDepartment(
+      assignedDepartment,
+      fallbackCategory: normalizedCategory,
+    );
+    final resolvedRequiredDepts = requiredDepartments.isNotEmpty
+        ? requiredDepartments
+            .map((d) => CivicTaxonomy.normalizeDepartment(d, fallbackCategory: normalizedCategory))
+            .toSet()
+            .toList()
+        : <String>[resolvedLeadDept];
+    if (!resolvedRequiredDepts.contains(resolvedLeadDept)) {
+      resolvedRequiredDepts.insert(0, resolvedLeadDept);
+    }
+
     // 3. Acquire location coordinates
     final loc = LocationService.currentLocation;
     final now = DateTime.now();
     final randomDigits = (_uuid.v4().hashCode.abs() % 900000) + 100000;
     final caseNumber = 'CF-${now.year}-$randomDigits';
 
+    final deptSummary = resolvedRequiredDepts.length > 1
+        ? 'Multi-department routing: Lead = $resolvedLeadDept; Co-assigned = ${resolvedRequiredDepts.where((d) => d != resolvedLeadDept).join(", ")}.'
+        : 'Routed to $resolvedLeadDept.';
+
     final initialTimeline = [
       CivicFlowTimelineEvent(
         status: CivicFlowStatus.submitted,
         title: 'Case Submitted by Citizen',
-        description: 'Grievance recorded with unique tracking ID $caseNumber and queued for municipal triage.',
+        description:
+            'Grievance recorded ($caseNumber). $deptSummary${aiConfidence != null ? " AI Vision confidence ${(aiConfidence * 100).round()}%." : ""}',
         timestamp: now,
         actor: citizenName,
       ),
@@ -236,7 +265,7 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
       citizenId: uid,
       citizenName: citizenName,
       citizenPhone: citizenPhone,
-      category: category,
+      category: normalizedCategory,
       subcategory: subcategory,
       description: description.trim(),
       landmark: landmark?.trim().isNotEmpty == true ? landmark!.trim() : null,
@@ -244,8 +273,14 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
       latitude: loc.latitude,
       longitude: loc.longitude,
       imageUrl: imageUrl,
-      priority: 'medium',
+      priority: priority,
       status: CivicFlowStatus.submitted,
+      assignedDepartment: resolvedLeadDept,
+      requiredDepartments: resolvedRequiredDepts,
+      departmentReasons: departmentReasons,
+      aiConfidence: aiConfidence,
+      piiRedactedCount: piiRedactedCount,
+      embeddingVector: embeddingVector,
       sourceCivicBookPostId: sourceCivicBookPostId,
       timeline: initialTimeline,
       createdAt: now,
@@ -281,6 +316,42 @@ class CivicFlowNotifier extends StateNotifier<CivicFlowState> {
 
     LoggingService.logBreadcrumb('Case created successfully with reference $caseNumber', correlationId: cid);
     return caseNumber;
+  }
+
+  /// Support / follow an existing nearby grievance instead of creating a duplicate
+  Future<bool> supportExistingCase(String caseId) async {
+    final currentUser = _ref.read(authProvider).user;
+    if (currentUser == null) return false;
+    final uid = currentUser.uid;
+    final index = state.citizenCases.indexWhere((c) => c.id == caseId);
+
+    if (index != -1) {
+      final target = state.citizenCases[index];
+      final updated = target.copyWith(
+        supportersCount: target.supportersCount + 1,
+        updatedAt: DateTime.now(),
+      );
+      final list = List<CivicFlowCase>.from(state.citizenCases);
+      list[index] = updated;
+      state = state.copyWith(citizenCases: list);
+      await _saveCachedCases(uid, list);
+    }
+
+    try {
+      if (_firestore != null) {
+        await _firestore
+            .collection('tenants')
+            .doc(AppConstants.defaultTenantId)
+            .collection('civicFlowCases')
+            .doc(caseId)
+            .update({
+          'supportersCount': FieldValue.increment(1),
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+      }
+    } catch (_) {}
+
+    return true;
   }
 
   /// Citizen responds to a "Needs Information" request

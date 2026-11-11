@@ -117,21 +117,150 @@ class _CaseDetailScreenState extends ConsumerState<CaseDetailScreen> {
                         ),
                       ],
                     ),
-                    if (c.assignedDepartment != null) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(Icons.account_balance_outlined, size: 16, color: EvoraColors.primary),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              c.assignedDepartment!,
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: EvoraColors.primary),
-                            ),
+                    if (c.assignedDepartment != null || c.requiredDepartments.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: EvoraColors.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: EvoraColors.primary.withValues(alpha: 0.25),
                           ),
-                        ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.account_balance_outlined, size: 16, color: EvoraColors.primary),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Lead: ${c.assignedDepartment ?? c.requiredDepartments.first}',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: EvoraColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (c.requiredDepartments.length > 1) ...[
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: c.requiredDepartments
+                                    .where((d) => d != c.assignedDepartment)
+                                    .map((dept) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: EvoraColors.secondary.withValues(alpha: 0.14),
+                                      borderRadius: BorderRadius.circular(100),
+                                    ),
+                                    child: Text(
+                                      '+ $dept',
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: EvoraColors.primary,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                            if (c.departmentReasons.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              ...c.departmentReasons.entries.map((e) => Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Text(
+                                      '• ${e.key}: ${e.value}',
+                                      style: const TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant),
+                                    ),
+                                  )),
+                            ],
+                          ],
+                        ),
                       ),
                     ],
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: (c.priority == 'high' || c.priority == 'urgent')
+                                ? Colors.orange.withValues(alpha: 0.15)
+                                : EvoraColors.surfaceContainerHigh,
+                            borderRadius: BorderRadius.circular(100),
+                          ),
+                          child: Text(
+                            'Priority: ${c.priority.toUpperCase()}',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              color: (c.priority == 'high' || c.priority == 'urgent')
+                                  ? Colors.orange.shade800
+                                  : EvoraColors.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        if (c.aiConfidence != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: EvoraColors.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              'AI Triage ${(c.aiConfidence! * 100).round()}%',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: EvoraColors.primary,
+                              ),
+                            ),
+                          ),
+                        if (c.piiRedactedCount > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.teal.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              '${c.piiRedactedCount} PII Redacted',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.teal.shade700,
+                              ),
+                            ),
+                          ),
+                        if (c.supportersCount > 1)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(100),
+                            ),
+                            child: Text(
+                              '${c.supportersCount} Citizens Supporting',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.blue.shade700,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                     if (c.assignedOfficer != null) ...[
                       const SizedBox(height: 6),
                       Row(

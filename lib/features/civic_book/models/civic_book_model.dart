@@ -29,6 +29,9 @@ class CivicBookPost {
   final int commentsCount;
   final bool isFormalCaseRaised;
   final String? civicFlowCaseId;
+  final List<double>? embeddingVector;
+  final int piiRedactedCount;
+  final List<String> requiredDepartments;
   final DateTime createdAt;
 
   // Transient state per user session
@@ -52,6 +55,9 @@ class CivicBookPost {
     this.commentsCount = 0,
     this.isFormalCaseRaised = false,
     this.civicFlowCaseId,
+    this.embeddingVector,
+    this.piiRedactedCount = 0,
+    this.requiredDepartments = const [],
     required this.createdAt,
     this.currentUserVote = 0,
     this.distanceKm,
@@ -72,6 +78,9 @@ class CivicBookPost {
     int? commentsCount,
     bool? isFormalCaseRaised,
     String? civicFlowCaseId,
+    List<double>? embeddingVector,
+    int? piiRedactedCount,
+    List<String>? requiredDepartments,
     int? currentUserVote,
     double? distanceKm,
   }) {
@@ -92,6 +101,9 @@ class CivicBookPost {
       commentsCount: commentsCount ?? this.commentsCount,
       isFormalCaseRaised: isFormalCaseRaised ?? this.isFormalCaseRaised,
       civicFlowCaseId: civicFlowCaseId ?? this.civicFlowCaseId,
+      embeddingVector: embeddingVector ?? this.embeddingVector,
+      piiRedactedCount: piiRedactedCount ?? this.piiRedactedCount,
+      requiredDepartments: requiredDepartments ?? this.requiredDepartments,
       createdAt: createdAt,
       currentUserVote: currentUserVote ?? this.currentUserVote,
       distanceKm: distanceKm ?? this.distanceKm,
@@ -116,11 +128,16 @@ class CivicBookPost {
       'commentsCount': commentsCount,
       'isFormalCaseRaised': isFormalCaseRaised,
       'civicFlowCaseId': civicFlowCaseId,
+      if (embeddingVector != null) 'embeddingVector': embeddingVector,
+      'piiRedactedCount': piiRedactedCount,
+      if (requiredDepartments.isNotEmpty) 'requiredDepartments': requiredDepartments,
       'createdAt': createdAt.toIso8601String(),
     };
   }
 
   factory CivicBookPost.fromMap(Map<String, dynamic> map, {required String id, int userVote = 0, double? distance}) {
+    final rawVec = map['embeddingVector'] as List<dynamic>?;
+    final rawDepts = map['requiredDepartments'] as List<dynamic>?;
     return CivicBookPost(
       id: id,
       tenantId: map['tenantId'] ?? 'tenant_dehradun_01',
@@ -138,6 +155,9 @@ class CivicBookPost {
       commentsCount: (map['commentsCount'] as num?)?.toInt() ?? 0,
       isFormalCaseRaised: map['isFormalCaseRaised'] ?? false,
       civicFlowCaseId: map['civicFlowCaseId'],
+      embeddingVector: rawVec?.map((e) => (e as num).toDouble()).toList(),
+      piiRedactedCount: (map['piiRedactedCount'] as num?)?.toInt() ?? 0,
+      requiredDepartments: rawDepts?.map((e) => e.toString()).toList() ?? const [],
       createdAt: _parseCivicDateTime(map['createdAt']),
       currentUserVote: userVote,
       distanceKm: distance,

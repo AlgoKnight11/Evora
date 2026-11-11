@@ -108,6 +108,12 @@ class CivicFlowCase {
   final String priority; // 'low', 'medium', 'high', 'urgent'
   final String status;
   final String? assignedDepartment;
+  final List<String> requiredDepartments;
+  final Map<String, String> departmentReasons;
+  final double? aiConfidence;
+  final int piiRedactedCount;
+  final int supportersCount;
+  final List<double>? embeddingVector;
   final String? assignedOfficer;
   final String? sourceCivicBookPostId;
   final String? officerNotes;
@@ -134,6 +140,12 @@ class CivicFlowCase {
     this.priority = 'medium',
     this.status = CivicFlowStatus.submitted,
     this.assignedDepartment,
+    this.requiredDepartments = const [],
+    this.departmentReasons = const {},
+    this.aiConfidence,
+    this.piiRedactedCount = 0,
+    this.supportersCount = 1,
+    this.embeddingVector,
     this.assignedOfficer,
     this.sourceCivicBookPostId,
     this.officerNotes,
@@ -143,9 +155,17 @@ class CivicFlowCase {
     required this.updatedAt,
   });
 
+  bool get isMultiDepartment => requiredDepartments.length > 1;
+
   CivicFlowCase copyWith({
     String? status,
     String? assignedDepartment,
+    List<String>? requiredDepartments,
+    Map<String, String>? departmentReasons,
+    double? aiConfidence,
+    int? piiRedactedCount,
+    int? supportersCount,
+    List<double>? embeddingVector,
     String? assignedOfficer,
     String? officerNotes,
     String? citizenFeedback,
@@ -170,6 +190,12 @@ class CivicFlowCase {
       priority: priority,
       status: status ?? this.status,
       assignedDepartment: assignedDepartment ?? this.assignedDepartment,
+      requiredDepartments: requiredDepartments ?? this.requiredDepartments,
+      departmentReasons: departmentReasons ?? this.departmentReasons,
+      aiConfidence: aiConfidence ?? this.aiConfidence,
+      piiRedactedCount: piiRedactedCount ?? this.piiRedactedCount,
+      supportersCount: supportersCount ?? this.supportersCount,
+      embeddingVector: embeddingVector ?? this.embeddingVector,
       assignedOfficer: assignedOfficer ?? this.assignedOfficer,
       sourceCivicBookPostId: sourceCivicBookPostId,
       officerNotes: officerNotes ?? this.officerNotes,
@@ -199,6 +225,12 @@ class CivicFlowCase {
       'priority': priority,
       'status': status,
       'assignedDepartment': assignedDepartment,
+      'requiredDepartments': requiredDepartments,
+      'departmentReasons': departmentReasons,
+      'aiConfidence': aiConfidence,
+      'piiRedactedCount': piiRedactedCount,
+      'supportersCount': supportersCount,
+      if (embeddingVector != null) 'embeddingVector': embeddingVector,
       'assignedOfficer': assignedOfficer,
       'sourceCivicBookPostId': sourceCivicBookPostId,
       'officerNotes': officerNotes,
@@ -216,6 +248,17 @@ class CivicFlowCase {
             .map((e) => CivicFlowTimelineEvent.fromMap(e as Map<String, dynamic>))
             .toList()
         : <CivicFlowTimelineEvent>[];
+
+    final rawDepts = map['requiredDepartments'] as List<dynamic>?;
+    final depts = rawDepts?.map((e) => e.toString()).toList() ?? const <String>[];
+
+    final rawReasons = map['departmentReasons'] as Map<String, dynamic>?;
+    final reasons = rawReasons != null
+        ? rawReasons.map((k, v) => MapEntry(k, v.toString()))
+        : const <String, String>{};
+
+    final rawVec = map['embeddingVector'] as List<dynamic>?;
+    final vec = rawVec?.map((e) => (e as num).toDouble()).toList();
 
     return CivicFlowCase(
       id: id,
@@ -235,6 +278,12 @@ class CivicFlowCase {
       priority: map['priority'] ?? 'medium',
       status: map['status'] ?? CivicFlowStatus.submitted,
       assignedDepartment: map['assignedDepartment'],
+      requiredDepartments: depts,
+      departmentReasons: reasons,
+      aiConfidence: (map['aiConfidence'] as num?)?.toDouble(),
+      piiRedactedCount: (map['piiRedactedCount'] as num?)?.toInt() ?? 0,
+      supportersCount: (map['supportersCount'] as num?)?.toInt() ?? 1,
+      embeddingVector: vec,
       assignedOfficer: map['assignedOfficer'],
       sourceCivicBookPostId: map['sourceCivicBookPostId'],
       officerNotes: map['officerNotes'],

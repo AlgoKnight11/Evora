@@ -358,6 +358,9 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
     required String description,
     required String category,
     File? imageFile,
+    List<double>? embeddingVector,
+    int piiRedactedCount = 0,
+    List<String> requiredDepartments = const [],
   }) async {
     state = state.copyWith(isLoading: true, clearError: true);
     final cid = LoggingService.generateCorrelationId();
@@ -406,6 +409,9 @@ class CivicBookNotifier extends StateNotifier<CivicBookState> {
       upvotesCount: 1, // Author automatic upvote
       downvotesCount: 0,
       commentsCount: 0,
+      embeddingVector: embeddingVector,
+      piiRedactedCount: piiRedactedCount,
+      requiredDepartments: requiredDepartments,
       createdAt: DateTime.now(),
       currentUserVote: 1,
     );

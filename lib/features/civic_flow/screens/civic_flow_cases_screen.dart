@@ -292,14 +292,21 @@ class _CivicFlowCasesScreenState extends ConsumerState<CivicFlowCasesScreen>
                     c.locality,
                     style: const TextStyle(fontSize: 12, color: EvoraColors.outline),
                   ),
-                  if (c.assignedDepartment != null) ...[
+                  if (c.assignedDepartment != null || c.requiredDepartments.isNotEmpty) ...[
+                    const SizedBox(width: 10),
                     const Spacer(),
-                    const Icon(Icons.business_outlined, size: 14, color: EvoraColors.primary),
+                    Icon(
+                      c.isMultiDepartment ? Icons.account_tree_outlined : Icons.business_outlined,
+                      size: 14,
+                      color: EvoraColors.primary,
+                    ),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
-                        'Assigned',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: EvoraColors.primary),
+                        c.isMultiDepartment
+                            ? '${c.requiredDepartments.length} Depts • ${c.assignedDepartment ?? c.requiredDepartments.first}'
+                            : (c.assignedDepartment ?? c.requiredDepartments.first),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: EvoraColors.primary),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
