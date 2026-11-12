@@ -48,12 +48,6 @@ class LocationService {
     final cid = LoggingService.generateCorrelationId();
 
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        LoggingService.logBreadcrumb('Location service disabled on device. Using fallback.', correlationId: cid);
-        return _cachedLocation;
-      }
-
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied && requestIfNeeded) {
         permission = await Geolocator.requestPermission();
@@ -61,6 +55,12 @@ class LocationService {
 
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
         LoggingService.logBreadcrumb('Location permission denied ($permission). Using fallback.', correlationId: cid);
+        return _cachedLocation;
+      }
+
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        LoggingService.logBreadcrumb('Location service disabled on device. Using fallback.', correlationId: cid);
         return _cachedLocation;
       }
 
