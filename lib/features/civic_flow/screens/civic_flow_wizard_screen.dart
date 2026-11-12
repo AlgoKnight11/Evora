@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../../services/ai_gateway_service.dart';
+import '../../../services/device_permission_service.dart';
 import '../../../services/location_service.dart';
 import '../../../services/pii_redaction_service.dart';
 import '../../ai_engine/models/civic_ai_models.dart';
@@ -64,6 +65,8 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
   PiiRedactionResult? _redactionResult;
   List<double>? _cachedEmbedding;
   bool _descriptionEditedManually = false;
+  bool _localityEditedManually = false;
+  bool _isFetchingLocation = false;
 
   final ImagePicker _picker = ImagePicker();
 
@@ -119,45 +122,24 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
   Future<void> _pickImage(ImageSource source) async {
     final isCamera = source == ImageSource.camera;
 
-    // Explicit Device Access Permission Dialog
-    final allowed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: EvoraColors.surfaceContainerLowest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(
-              isCamera ? Icons.camera_alt_outlined : Icons.photo_library_outlined,
-              color: EvoraColors.primary,
-            ),
-            const SizedBox(width: 10),
-            Text(
-              isCamera ? 'Camera Access Required' : 'Photo Gallery Access',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-            ),
-          ],
-        ),
-        content: Text(
-          isCamera
-              ? 'EVORA requires camera access to photograph physical proof of this municipal grievance. EXIF metadata and faces/license plates are automatically scrubbed before upload.'
-              : 'EVORA requires gallery access so you can attach existing photographic evidence. EXIF metadata and PII will be stripped on-device.',
-          style: const TextStyle(fontSize: 13, color: EvoraColors.onSurfaceVariant),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Allow & Open'),
-          ),
-        ],
-      ),
-    );
+    final granted = isCamera
+        ? await DevicePermissionService.ensureCameraPermission()
+        : await DevicePermissionService.ensureGalleryPermission();
 
-    if (allowed != true) return;
+    if (!granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isCamera
+                  ? 'Camera permission is required to capture issue photos.'
+                  : 'Photo gallery permission is required to select issue photos.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     try {
       final picked = await _picker.pickImage(
@@ -301,6 +283,21 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
     });
   }
 
+  Future<void> _refreshLocationOnDemand() async {
+    if (_isFetchingLocation) return;
+    setState(() => _isFetchingLocation = true);
+    final loc = await LocationService.acquireLocation();
+    if (!mounted) return;
+    setState(() {
+      _isFetchingLocation = false;
+      if (loc.isLiveGps &&
+          !_localityEditedManually &&
+          (widget.initialLocality == null || widget.initialLocality!.isEmpty)) {
+        _localityController.text = loc.localityName;
+      }
+    });
+  }
+
   Future<void> _submitCase() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -324,7 +321,10 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
 
     final gateway = ref.read(aiGatewayProvider);
     final detector = ref.read(duplicateDetectorProvider);
-    final loc = LocationService.currentLocation;
+    final loc = LocationService.currentLocation.isLiveGps
+        ? LocationService.currentLocation
+        : await LocationService.acquireLocation();
+    if (!mounted) return;
 
     final summaryForMatch =
         _visionAnalysis?.issueFingerprintText ?? '$_selectedCategory $_selectedSubcategory ${_descController.text}';
@@ -437,8 +437,13 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final media = MediaQuery.of(ctx);
+        final bottomNavInset =
+            media.padding.bottom > media.viewPadding.bottom
+                ? media.padding.bottom
+                : media.viewPadding.bottom;
         return Container(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomNavInset),
           decoration: const BoxDecoration(
             color: EvoraColors.surfaceContainerLowest,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -851,10 +856,19 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
           child: Stepper(
             type: StepperType.horizontal,
             currentStep: _currentStep,
-            onStepTapped: (step) => setState(() => _currentStep = step),
+            onStepTapped: (step) {
+              setState(() => _currentStep = step);
+              if (step == 1 && !LocationService.currentLocation.isLiveGps) {
+                _refreshLocationOnDemand();
+              }
+            },
             onStepContinue: () {
               if (_currentStep < 2) {
-                setState(() => _currentStep++);
+                final nextStep = _currentStep + 1;
+                setState(() => _currentStep = nextStep);
+                if (nextStep == 1 && !LocationService.currentLocation.isLiveGps) {
+                  _refreshLocationOnDemand();
+                }
               } else {
                 _submitCase();
               }
@@ -1024,6 +1038,7 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _localityController,
+                      onChanged: (_) => _localityEditedManually = true,
                       decoration: const InputDecoration(
                         hintText: 'e.g., Dehradun Central, Ward 4',
                         prefixIcon: Icon(Icons.location_city_outlined),

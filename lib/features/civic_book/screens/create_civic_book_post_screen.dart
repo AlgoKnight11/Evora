@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../../services/ai_gateway_service.dart';
+import '../../../services/device_permission_service.dart';
 import '../../../services/pii_redaction_service.dart';
 import '../../ai_engine/models/civic_ai_models.dart';
 import '../../ai_engine/services/duplicate_detector_service.dart';
@@ -61,44 +62,24 @@ class _CreateCivicBookPostScreenState
 
   Future<void> _pickImage(ImageSource source) async {
     final isCamera = source == ImageSource.camera;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: EvoraColors.surfaceContainerLowest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(
-              isCamera ? Icons.camera_alt_outlined : Icons.photo_library_outlined,
-              color: EvoraColors.primary,
-            ),
-            const SizedBox(width: 10),
-            Text(
-              isCamera ? 'Camera Access' : 'Photo Gallery Access',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
-            ),
-          ],
-        ),
-        content: Text(
-          isCamera
-              ? 'EVORA requests camera access to photograph local civic issues. Faces and license plates are blurred on-device before upload.'
-              : 'EVORA requests gallery access to select existing civic photos. EXIF metadata and PII are scrubbed before upload.',
-          style: const TextStyle(fontSize: 13, color: EvoraColors.onSurfaceVariant),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Allow & Open'),
-          ),
-        ],
-      ),
-    );
+    final granted = isCamera
+        ? await DevicePermissionService.ensureCameraPermission()
+        : await DevicePermissionService.ensureGalleryPermission();
 
-    if (confirmed != true) return;
+    if (!granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isCamera
+                  ? 'Camera permission is required to capture civic photos.'
+                  : 'Photo gallery permission is required to choose civic photos.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     try {
       final picked = await _picker.pickImage(

@@ -26,7 +26,11 @@ class AuthGuard {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) {
-        final bottomInset = MediaQuery.paddingOf(sheetCtx).bottom;
+        final media = MediaQuery.of(sheetCtx);
+        final bottomInset =
+            media.padding.bottom > media.viewPadding.bottom
+                ? media.padding.bottom
+                : media.viewPadding.bottom;
         return Container(
           padding: EdgeInsets.fromLTRB(24, 14, 24, 24 + bottomInset),
           decoration: const BoxDecoration(

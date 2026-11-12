@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -8,6 +9,7 @@ import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:evora/features/ai_engine/models/civic_ai_models.dart';
 import 'package:evora/features/ai_engine/services/duplicate_detector_service.dart';
+import 'package:evora/features/ai_engine/widgets/duplicate_alert_sheet.dart';
 import 'package:evora/features/auth/models/user_model.dart';
 import 'package:evora/features/auth/services/auth_service.dart';
 import 'package:evora/features/civic_book/models/civic_book_model.dart';
@@ -15,6 +17,7 @@ import 'package:evora/features/civic_flow/models/civic_flow_model.dart';
 import 'package:evora/features/civic_flow/models/civic_taxonomy.dart';
 import 'package:evora/features/civic_flow/services/civic_flow_service.dart';
 import 'package:evora/services/ai_gateway_service.dart';
+import 'package:evora/services/device_permission_service.dart';
 import 'package:evora/services/pii_redaction_service.dart';
 
 class _TestAuthNotifier extends AuthNotifier {
@@ -396,6 +399,63 @@ void main() {
       expect(result.isMultiDepartment, isTrue);
       expect(calledModels, containsAll(['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']));
       expect(calledModels.last, 'gemini-3.1-flash-lite');
+    });
+  });
+
+  group('Phase 3 UI Insets & Native Permission Tests', () {
+    testWidgets('DuplicateAlertSheet keeps Submit Anyway button above Android nav bar inset', (tester) async {
+      const navBarHeight = 48.0;
+      const screenSize = Size(400, 800);
+
+      final candidates = List.generate(
+        3,
+        (i) => DuplicateCandidate(
+          sourceId: 'cf_$i',
+          sourceType: 'civic_flow_case',
+          referenceLabel: 'CF-2026-10000$i',
+          title: 'Roads & Footpaths — Dangerous Pothole #$i',
+          description: 'Large waterlogged pothole obstructing vehicular traffic.',
+          category: 'Roads & Footpaths',
+          locality: 'Dehradun Central',
+          status: 'Submitted',
+          distanceMeters: (i + 1) * 5.0,
+          similarityScore: 0.92 - (i * 0.04),
+          matchReason: 'High AI visual/semantic similarity',
+          createdAt: DateTime(2026, 11, 12),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: screenSize,
+              viewPadding: EdgeInsets.only(bottom: navBarHeight),
+            ),
+            child: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: DuplicateAlertSheet(
+                  candidates: candidates,
+                  onSupportCandidate: (_) async {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final submitAnywayFinder = find.text('Submit Anyway — This Is a Separate Issue');
+      expect(submitAnywayFinder, findsOneWidget);
+
+      final buttonRect = tester.getRect(find.widgetWithText(OutlinedButton, 'Submit Anyway — This Is a Separate Issue'));
+      expect(buttonRect.bottom, lessThanOrEqualTo(screenSize.height - navBarHeight));
+    });
+
+    test('DevicePermissionService resolves cleanly in host test environment', () async {
+      expect(await DevicePermissionService.ensureCameraPermission(), isTrue);
+      expect(await DevicePermissionService.ensureGalleryPermission(), isTrue);
     });
   });
 }

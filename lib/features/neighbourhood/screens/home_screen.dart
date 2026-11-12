@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../../core/utils/auth_guard.dart';
 import '../../../services/cloudinary_service.dart';
+import '../../../services/device_permission_service.dart';
 import '../../auth/services/auth_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -28,6 +29,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       actionDescription: 'Sign in to upload verification photos to EVORA.',
     );
     if (!authed) return;
+
+    final granted = await DevicePermissionService.ensureGalleryPermission();
+    if (!granted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Photo gallery permission is required to select a photo.'),
+          ),
+        );
+      }
+      return;
+    }
 
     final pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,

@@ -56,11 +56,16 @@ class DuplicateAlertSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxHeight = MediaQuery.of(context).size.height * 0.78;
+    final media = MediaQuery.of(context);
+    final bottomNavInset =
+        media.padding.bottom > media.viewPadding.bottom
+            ? media.padding.bottom
+            : media.viewPadding.bottom;
+    final maxHeight = media.size.height * 0.84;
 
     return Container(
       constraints: BoxConstraints(maxHeight: maxHeight),
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+      padding: EdgeInsets.fromLTRB(20, 14, 20, 20 + bottomNavInset),
       decoration: const BoxDecoration(
         color: EvoraColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
