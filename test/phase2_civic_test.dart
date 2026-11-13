@@ -52,6 +52,29 @@ void main() {
       expect(fuzzed.lat, 30.324);
       expect(fuzzed.lng, 78.042);
     });
+
+    test('Locality resolver identifies Delhi, NCR, and Doon Valley neighborhoods', () {
+      // Delhi coordinates
+      expect(
+        LocationService.resolveLocalityFromCoordinates(28.6139, 77.2090),
+        'Delhi (Live GPS)',
+      );
+      // Noida / NCR coordinates
+      expect(
+        LocationService.resolveLocalityFromCoordinates(28.5355, 77.3910),
+        'Delhi NCR (Live GPS)',
+      );
+      // Dehradun Rajpur Road
+      expect(
+        LocationService.resolveLocalityFromCoordinates(30.3700, 78.0800),
+        'Rajpur Road / Malsi',
+      );
+      // Dehradun Central
+      expect(
+        LocationService.resolveLocalityFromCoordinates(30.3244, 78.0416),
+        'Dehradun Central / Paltan Bazaar',
+      );
+    });
   });
 
   group('Phase 2 CivicBook Voting, Scoring & Real-Only Comments Tests', () {

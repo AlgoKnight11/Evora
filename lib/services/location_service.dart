@@ -75,7 +75,7 @@ class LocationService {
       _cachedLocation = EvoraLocation(
         latitude: position.latitude,
         longitude: position.longitude,
-        localityName: _resolveLocalityFromCoordinates(position.latitude, position.longitude),
+        localityName: resolveLocalityFromCoordinates(position.latitude, position.longitude),
         isLiveGps: true,
       );
 
@@ -144,12 +144,37 @@ class LocationService {
     return degrees * pi / 180;
   }
 
-  /// Offline locality resolver for common Dehradun neighborhoods
-  static String _resolveLocalityFromCoordinates(double lat, double lng) {
-    if (lat > 30.36) return 'Rajpur Road / Malsi';
-    if (lat > 30.34) return 'Jakhan / Pacific Mall';
-    if (lat > 30.32) return 'Dehradun Central / Paltan Bazaar';
-    if (lat > 30.30) return 'ISBT / Saharanpur Road';
-    return 'Doon Valley Municipal Area';
+  /// Offline locality resolver for common Dehradun neighborhoods & wider regions
+  static String resolveLocalityFromCoordinates(double lat, double lng) {
+    // 1. Dehradun / Doon Valley Metropolitan Area (30.15°N - 30.50°N, 77.80°E - 78.25°E)
+    final isDoonValley = (lat >= 30.15 && lat <= 30.50) && (lng >= 77.80 && lng <= 78.25);
+    if (isDoonValley) {
+      if (lat > 30.36) return 'Rajpur Road / Malsi';
+      if (lat > 30.34) return 'Jakhan / Pacific Mall';
+      if (lat > 30.32) return 'Dehradun Central / Paltan Bazaar';
+      if (lat > 30.30) return 'ISBT / Saharanpur Road';
+      return 'Doon Valley Municipal Area';
+    }
+
+    // 2. National Capital Region (Delhi, Noida, Gurgaon, Ghaziabad, Faridabad)
+    if (lat >= 28.20 && lat <= 28.95 && lng >= 76.80 && lng <= 77.60) {
+      if (lat >= 28.50 && lat <= 28.75 && lng >= 77.05 && lng <= 77.35) {
+        return 'Delhi (Live GPS)';
+      }
+      return 'Delhi NCR (Live GPS)';
+    }
+
+    // 3. Haridwar & Rishikesh Foothills
+    if (lat >= 29.85 && lat < 30.15 && lng >= 78.00 && lng <= 78.40) {
+      return 'Haridwar / Rishikesh (Live GPS)';
+    }
+
+    // 4. Chandigarh / Mohali Tri-City
+    if (lat >= 30.60 && lat <= 30.85 && lng >= 76.60 && lng <= 76.95) {
+      return 'Chandigarh Tri-City (Live GPS)';
+    }
+
+    // 5. General fallback showing coordinates clearly
+    return 'Live GPS (${lat.toStringAsFixed(2)}°N, ${lng.toStringAsFixed(2)}°E)';
   }
 }
