@@ -57,15 +57,21 @@ class DuplicateAlertSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final bottomNavInset =
-        media.padding.bottom > media.viewPadding.bottom
-            ? media.padding.bottom
-            : media.viewPadding.bottom;
-    final maxHeight = media.size.height * 0.84;
+    final rawBottom = [
+      media.padding.bottom,
+      media.viewPadding.bottom,
+      media.viewInsets.bottom,
+    ].reduce((a, b) => a > b ? a : b);
+
+    // Guaranteed clearance above navigation bar (whether 3-button nav or gesture pill).
+    // On devices where the system reports 0 insets (e.g. Xiaomi MIUI / HyperOS 3-button nav),
+    // default to 56.0dp so the button is completely above the ~48dp navigation icons.
+    final bottomNavInset = rawBottom > 0 ? (rawBottom + 16.0) : 56.0;
+    final maxHeight = media.size.height * 0.86;
 
     return Container(
       constraints: BoxConstraints(maxHeight: maxHeight),
-      padding: EdgeInsets.fromLTRB(20, 14, 20, 20 + bottomNavInset),
+      padding: EdgeInsets.fromLTRB(20, 14, 20, bottomNavInset),
       decoration: const BoxDecoration(
         color: EvoraColors.surfaceContainerLowest,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -250,7 +256,13 @@ class DuplicateAlertSheet extends StatelessWidget {
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
+            height: 48,
             child: OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               onPressed: () {
                 Navigator.pop(
                   context,
@@ -259,7 +271,10 @@ class DuplicateAlertSheet extends StatelessWidget {
                   ),
                 );
               },
-              child: const Text('Submit Anyway — This Is a Separate Issue'),
+              child: const Text(
+                'Submit Anyway — This Is a Separate Issue',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],

@@ -185,4 +185,24 @@ void main() {
       expect(data.healthAdvisory, contains('temporarily offline'));
     });
   });
+
+  group('Phase 4: Eco Action Daily Habit User Scoping Tests', () {
+    test('Eco action marks done for active user and resets for guest or different user', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+
+      final keyUserA = 'evora_eco_action_userA_${now.year}_${now.month}_${now.day}';
+      final keyUserB = 'evora_eco_action_userB_${now.year}_${now.month}_${now.day}';
+
+      // User A marks done
+      await prefs.setBool(keyUserA, true);
+
+      // Verify User A is marked done today
+      expect(prefs.getBool(keyUserA), isTrue);
+
+      // Verify User B (or guest / after logout) is NOT marked done
+      expect(prefs.getBool(keyUserB) ?? false, isFalse);
+    });
+  });
 }

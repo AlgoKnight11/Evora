@@ -438,12 +438,14 @@ class _CivicFlowWizardScreenState extends ConsumerState<CivicFlowWizardScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final media = MediaQuery.of(ctx);
-        final bottomNavInset =
-            media.padding.bottom > media.viewPadding.bottom
-                ? media.padding.bottom
-                : media.viewPadding.bottom;
+        final rawBottom = [
+          media.padding.bottom,
+          media.viewPadding.bottom,
+          media.viewInsets.bottom,
+        ].reduce((a, b) => a > b ? a : b);
+        final bottomNavInset = rawBottom > 0 ? (rawBottom + 16.0) : 56.0;
         return Container(
-          padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomNavInset),
+          padding: EdgeInsets.fromLTRB(24, 24, 24, bottomNavInset),
           decoration: const BoxDecoration(
             color: EvoraColors.surfaceContainerLowest,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),

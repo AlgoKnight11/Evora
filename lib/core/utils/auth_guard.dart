@@ -27,12 +27,14 @@ class AuthGuard {
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) {
         final media = MediaQuery.of(sheetCtx);
-        final bottomInset =
-            media.padding.bottom > media.viewPadding.bottom
-                ? media.padding.bottom
-                : media.viewPadding.bottom;
+        final rawBottom = [
+          media.padding.bottom,
+          media.viewPadding.bottom,
+          media.viewInsets.bottom,
+        ].reduce((a, b) => a > b ? a : b);
+        final bottomInset = rawBottom > 0 ? (rawBottom + 16.0) : 56.0;
         return Container(
-          padding: EdgeInsets.fromLTRB(24, 14, 24, 24 + bottomInset),
+          padding: EdgeInsets.fromLTRB(24, 14, 24, bottomInset),
           decoration: const BoxDecoration(
             color: EvoraColors.surfaceContainerLowest,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),

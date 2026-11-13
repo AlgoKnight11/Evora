@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../../core/utils/auth_guard.dart';
+import '../../../core/utils/external_launcher.dart';
 import '../../../services/environmental_service.dart';
 import '../../../services/location_service.dart';
 import '../../auth/services/auth_service.dart';
@@ -32,15 +33,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     'West Doon': (lat: 30.3685, lng: 77.8760),
   };
 
+  static String _ecoActionKey(String uid) {
+    final now = DateTime.now();
+    return 'evora_eco_action_${uid}_${now.year}_${now.month}_${now.day}';
+  }
+
+  Future<void> _loadEcoActionStatus(String? uid) async {
+    if (uid == null || uid.isEmpty) {
+      if (mounted) setState(() => _ecoActionCompleted = false);
+      return;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isDone = prefs.getBool(_ecoActionKey(uid)) ?? false;
+      if (mounted) {
+        setState(() => _ecoActionCompleted = isDone);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _ecoActionCompleted = false);
+    }
+  }
+
+  Future<void> _saveEcoActionStatus(String uid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_ecoActionKey(uid), true);
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
-    final userLoc = ref.read(authProvider).user?.selectedLocality;
+    final user = ref.read(authProvider).user;
+    final userLoc = user?.selectedLocality;
     if (userLoc != null && _localities.containsKey(userLoc)) {
       _selectedLocalityName = userLoc;
       _activeLatitude = _localities[userLoc]!.lat;
       _activeLongitude = _localities[userLoc]!.lng;
     }
+    _loadEcoActionStatus(user?.uid);
   }
 
   Future<void> _useLiveGps() async {
@@ -70,12 +101,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final media = MediaQuery.of(ctx);
-        final bottomInset = media.padding.bottom > media.viewPadding.bottom
-            ? media.padding.bottom
-            : media.viewPadding.bottom;
+        final rawBottom = [
+          media.padding.bottom,
+          media.viewPadding.bottom,
+          media.viewInsets.bottom,
+        ].reduce((a, b) => a > b ? a : b);
+        final bottomInset = rawBottom > 0 ? (rawBottom + 16.0) : 56.0;
 
         return Container(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottomInset),
+          padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset),
           decoration: const BoxDecoration(
             color: EvoraColors.surfaceContainerLowest,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -166,18 +200,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _launchDirections(CircularFacility facility) async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}',
+    final success = await ExternalLauncher.launchDirections(
+      latitude: facility.latitude,
+      longitude: facility.longitude,
+      destinationName: facility.name,
     );
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (_) {}
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open Google Maps navigation for ${facility.name}'),
+          backgroundColor: EvoraColors.error,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authProvider, (previous, next) {
+      if (!next.isAuthenticated) {
+        setState(() => _ecoActionCompleted = false);
+      } else if (next.user?.uid != previous?.user?.uid) {
+        _loadEcoActionStatus(next.user?.uid);
+      }
+    });
+
     final authState = ref.watch(authProvider);
     final user = authState.user;
     final textTheme = Theme.of(context).textTheme;
@@ -217,6 +264,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               tooltip: 'Sign Out',
               onPressed: () async {
                 await ref.read(authProvider.notifier).signOut();
+                if (mounted) {
+                  setState(() => _ecoActionCompleted = false);
+                }
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -782,25 +832,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
             icon: Icon(_ecoActionCompleted ? Icons.check : Icons.thumb_up_alt_outlined, size: 16),
             label: Text(_ecoActionCompleted ? 'Completed for Today (+10 Eco Coins)' : 'Mark as Done Today (+10 Eco Coins)'),
-            onPressed: () async {
-              final authed = await AuthGuard.requireLogin(
-                context,
-                ref,
-                actionDescription: 'Sign in to record your daily eco actions and earn Eco Coins.',
-              );
-              if (authed && mounted) {
-                setState(() => _ecoActionCompleted = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Awesome! Daily eco habit recorded. Eco Coins balance syncing in Phase 5!',
-                    ),
-                    backgroundColor: EvoraColors.primary,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
-              }
-            },
+            onPressed: _ecoActionCompleted
+                ? null
+                : () async {
+                    final authed = await AuthGuard.requireLogin(
+                      context,
+                      ref,
+                      actionDescription: 'Sign in to record your daily eco actions and earn Eco Coins.',
+                    );
+                    if (authed && mounted) {
+                      final uid = ref.read(authProvider).user?.uid;
+                      if (uid != null) {
+                        await _saveEcoActionStatus(uid);
+                      }
+                      if (!mounted) return;
+                      setState(() => _ecoActionCompleted = true);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Awesome! Daily eco habit recorded. Eco Coins balance syncing in Phase 5!',
+                          ),
+                          backgroundColor: EvoraColors.primary,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
           ),
         ],
       ),

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/evora_colors.dart';
+import '../../../core/utils/external_launcher.dart';
 import '../models/circular_facility_model.dart';
 import '../services/circular_directory_service.dart';
 
@@ -24,47 +24,30 @@ class _FacilitiesDirectoryScreenState
   }
 
   Future<void> _launchDirections(CircularFacility facility) async {
-    final uri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}',
+    final success = await ExternalLauncher.launchDirections(
+      latitude: facility.latitude,
+      longitude: facility.longitude,
+      destinationName: facility.name,
     );
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not open map for ${facility.name}')),
-          );
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open navigation: $uri')),
-        );
-      }
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open Google Maps navigation for ${facility.name}'),
+          backgroundColor: EvoraColors.error,
+        ),
+      );
     }
   }
 
   Future<void> _launchPhoneCall(String phone) async {
-    final cleanPhone = phone.replaceAll(RegExp(r'\s+'), '');
-    final uri = Uri.parse('tel:$cleanPhone');
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not dial $phone')),
-          );
-        }
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not dial $phone')),
-        );
-      }
+    final success = await ExternalLauncher.launchCall(phone);
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not dial phone number: $phone'),
+          backgroundColor: EvoraColors.error,
+        ),
+      );
     }
   }
 
@@ -75,12 +58,15 @@ class _FacilitiesDirectoryScreenState
       backgroundColor: Colors.transparent,
       builder: (ctx) {
         final media = MediaQuery.of(ctx);
-        final bottomInset = media.padding.bottom > media.viewPadding.bottom
-            ? media.padding.bottom
-            : media.viewPadding.bottom;
+        final rawBottom = [
+          media.padding.bottom,
+          media.viewPadding.bottom,
+          media.viewInsets.bottom,
+        ].reduce((a, b) => a > b ? a : b);
+        final bottomInset = rawBottom > 0 ? (rawBottom + 16.0) : 56.0;
 
         return Container(
-          padding: EdgeInsets.fromLTRB(22, 16, 22, 22 + bottomInset),
+          padding: EdgeInsets.fromLTRB(22, 16, 22, bottomInset),
           decoration: const BoxDecoration(
             color: EvoraColors.surfaceContainerLowest,
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
