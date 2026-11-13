@@ -99,11 +99,44 @@ Phase 3 embeds multimodal AI intelligence directly into **CivicFlow** and **Civi
 
 ---
 
+## 🌿 Phase 4 Milestone: Citizen Daily Utility — My Neighbourhood, EvoSwitch & Circular Directory
+
+Phase 4 establishes everyday sustainability utility through real-time environmental telemetry, circular facility discovery with direct navigation, and deterministic carbon calculators.
+
+### 1. "My Neighbourhood" Dynamic Environmental Dashboard (`HomeScreen`)
+* **Live Environmental Telemetry (`EnvironmentalService`):** Integrates Open-Meteo European Copernicus (CAMS) atmospheric dispersion models to compute live PM2.5, PM10, Indian CPCB sub-index AQI, temperature, and weather conditions.
+* **Coordinate-Keyed Caching (`_coordKey`):** Employs isolated in-memory and disk cache partitions keyed by geographic grid coordinates (`${lat.toStringAsFixed(2)}_${lng.toStringAsFixed(2)}`), ensuring seamless, instant telemetry updates when switching between cities (e.g. Dehradun vs Delhi) without cross-contamination.
+* **Pull-to-Refresh & Manual Invalidation:** Full dashboard wrapped in a `RefreshIndicator` alongside an in-card refresh trigger for on-demand environmental polling.
+* **Strict Stale-Data Guardrail:** Zero-hallucination fallback returning `EnvironmentalData.unavailable()` when feeds are offline and un-cached.
+* **Locality & Regional GPS Switcher:** Instant switching between Doon Valley neighborhoods (*Dehradun Central*, *Rajpur Road*, *Dalanwala*, *Paltan Bazaar*, *ISBT/Majra*, *West Doon*) and device **Live GPS** with automatic regional recognition (*Delhi Live GPS*, *Delhi NCR*, *Haridwar/Rishikesh*, *Chandigarh Tri-City*).
+* **Today's Eco Action Daily Check-in:** Actionable daily sustainability prompt with per-user SharedPreferences scoping (`evora_eco_action_${uid}_${today}`) and automatic reactive reset on logout or guest mode.
+* **Senior-Accessible UI Cleanup:** Purged legacy Phase 1 test containers in favor of large high-contrast touch targets, a 2x2 civic grid, and a nearby recycling hubs carousel.
+
+### 2. Smart Waste & Circular Living Directory (`FacilitiesDirectoryScreen` & `CircularDirectoryService`)
+* **8 Verified Municipal Hubs in Dehradun:** Seeded with verified real-world recovery facilities (Kargi Chowk Material Recovery Facility, Nagar Nigam Patel Road E-Waste Hub, Old Rajpur Composting Hub near MDDA Park, Paltan Bazaar Eco Refill, Dalanwala Repair Guild, Pacific Mall E-Waste Takeback, ISBT Majra Scrap Hub, and Shishambara Integrated Solid Waste Management Facility).
+* **Multi-Criteria Search & Filtering:** Live substring search across facility names, localities, and accepted materials, with category filters (*All*, *E-Waste*, *Recycling*, *Composting*, *Refill*, *Repair*), distance radius sliders (<3 km, <5 km, <10 km, All), and "Verified Partners Only" toggles.
+* **Direct Google Maps Navigation (`ExternalLauncher`):** Implements Android 11+ `<queries>` package visibility compliance with a 3-tier fallback (native Google Navigation turn-by-turn `google.navigation:q=lat,lng&mode=d` $\rightarrow$ native geo intent $\rightarrow$ Google Maps Web).
+* **One-Tap Phone Dialer:** Direct calling launcher (`tel:`) pre-populating verified facility contact lines.
+
+### 3. EvoSwitch Sustainable Choice Engine (`EvoSwitchScreen` & `EvoSwitchService`)
+* **Deterministic Mathematical Engine:** Pure mathematical models derived from official Indian regulatory standards (CPCB, ARAI, IPCC, BEE India, UPCL domestic power tariffs) avoiding unconstrained LLM hallucinations:
+  1. *Travel & Commute:* ARAI emission factors comparing petrol cars (~170g $\text{CO}_2\text{e}$/km) against electric buses (~38g $\text{CO}_2\text{e}$/km), EV scooters (~15g), or active cycling/walking (0g), computing annual $\text{kg CO}_2\text{e}$ avoided, rupees saved, and tree power equivalents over 250 working days.
+  2. *Shopping & Packaging:* Single-use PET bottles (25g plastic, 82g $\text{CO}_2\text{e}$, ₹20) and LDPE polybags (8g plastic, 33g $\text{CO}_2\text{e}$, ₹5) averted per year.
+  3. *Repair vs. Buy New:* Embodied manufacturing carbon savings from repairing smartphones (~48 kg $\text{CO}_2\text{e}$), home appliances (~34 kg), bicycles (~32 kg), and footwear (~12 kg).
+  4. *Organic Waste Diversion:* Diverting kitchen wet waste from anaerobic dumps (0.65 kg $\text{CO}_2\text{e}$/kg methane emission factor) to aerobic compost (0.10 kg $\text{CO}_2\text{e}$/kg).
+  5. *Home Energy Habits:* BEE India 6%/°C AC setpoint optimization (24°C vs 18°C) and LED lighting retrofits evaluated against UPCL domestic tariffs (₹7.20/kWh).
+* **Verified Methodology Disclosure:** Transparent modal card outlining all emission baseline coefficients, conversion factors, and formulas.
+
+### 4. Android 3-Button Navigation Bar & System Inset Clearance
+* **Zero System Nav Collisions:** Dynamic window inset resolution across `DuplicateAlertSheet`, `AuthGuard`, `FacilitiesDirectoryScreen`, and `HomeScreen` with a guaranteed 56.0 dp fallback clearance on devices running Xiaomi MIUI / HyperOS with 3-button navigation bars (Square, Circle, Triangle), ensuring "Submit Anyway" and dialog action buttons never overlap system icons.
+
+---
+
 ## 🏗️ Project Architecture
 
 ```text
 android/app/src/main/
-├── AndroidManifest.xml                             # Camera, Location & version-aware Media permissions + <queries>
+├── AndroidManifest.xml                             # Camera, Location, Media permissions + Google Maps <queries>
 └── kotlin/com/evora/app/MainActivity.kt            # Native runtime permission MethodChannel handler
 lib/
 ├── core/
@@ -114,12 +147,13 @@ lib/
 │   │   ├── evora_typography.dart                   # Bilingual typography & tabular metrics
 │   │   └── evora_theme.dart                        # Material 3 ThemeData with stadium pill contours
 │   └── utils/
-│       └── auth_guard.dart                         # Lazy authentication modal gate & return flow
+│       ├── auth_guard.dart                         # Lazy authentication modal gate with safe bottom insets
+│       └── external_launcher.dart                  # Google Maps turn-by-turn navigation & phone dialer intent
 ├── features/
 │   ├── ai_engine/
 │   │   ├── models/civic_ai_models.dart             # CivicVisionAnalysis, PII boxes & DuplicateCandidate models
 │   │   ├── services/duplicate_detector_service.dart # 500m Haversine + cosine similarity duplicate detector
-│   │   └── widgets/duplicate_alert_sheet.dart      # Safe-area-aware nearby duplicate prompt & +1 support
+│   │   └── widgets/duplicate_alert_sheet.dart      # Safe-inset nearby duplicate prompt & +1 support
 │   ├── auth/
 │   │   ├── models/user_model.dart                  # EvoraUser Firestore schema model
 │   │   ├── screens/
@@ -142,12 +176,20 @@ lib/
 │   │   │   ├── civic_flow_wizard_screen.dart       # AI triage, multi-dept routing & 3-step wizard
 │   │   │   └── case_detail_screen.dart             # Multi-dept chips, 10-stage stepper & verification
 │   │   └── services/civic_flow_service.dart        # Riverpod CivicFlowNotifier & rate limiting
+│   ├── evoswitch/
+│   │   ├── models/evoswitch_models.dart            # EvoSwitch category schemas, options & calculation results
+│   │   ├── screens/evoswitch_screen.dart           # Interactive green calculator & verified methodology modal
+│   │   └── services/evoswitch_service.dart         # Deterministic CPCB/ARAI/IPCC/BEE mathematical engine
+│   ├── facilities/
+│   │   ├── models/circular_facility_model.dart     # CircularFacility schema, categories & verified badges
+│   │   ├── screens/facilities_directory_screen.dart # Interactive search, radius filtering & detail sheets
+│   │   └── services/circular_directory_service.dart # Seeded Dehradun facilities & proximity sorter
 │   ├── legal/
 │   │   └── screens/
 │   │       ├── privacy_policy_screen.dart          # DPDP Act compliant privacy disclosures
 │   │       └── terms_and_conditions_screen.dart    # Civic rules & non-monetary EcoCoin disclaimers
 │   ├── neighbourhood/
-│   │   └── screens/home_screen.dart                # Guest/Citizen home dashboard & service hub
+│   │   └── screens/home_screen.dart                # Senior-friendly dashboard, locality picker & telemetry card
 │   ├── onboarding/
 │   │   └── screens/onboarding_screen.dart          # 3-slide first-time user introduction
 │   └── splash/
@@ -158,13 +200,15 @@ lib/
 │   ├── ai_gateway_service.dart                     # Gemini 3.8 Flash Vision + fallback, caching & embeddings
 │   ├── cloudinary_service.dart                     # Unsigned multipart media upload service
 │   ├── device_permission_service.dart              # Native Android Camera & Gallery permission bridge
-│   ├── location_service.dart                       # GPS acquisition, Haversine math & privacy fuzzing
+│   ├── environmental_service.dart                  # Open-Meteo AQI/weather, coordinate-keyed cache & stale guard
+│   ├── location_service.dart                       # GPS acquisition, Haversine math & regional locality resolver
 │   ├── logging_service.dart                        # Breadcrumbs, Correlation IDs & PII scrubbing
 │   └── pii_redaction_service.dart                  # On-device EXIF stripping & face/plate pixelation
 └── main.dart                                       # Flutter bootstrap with ProviderScope & error hooks
 test/
 ├── phase2_civic_test.dart                          # Spatial math, real persistence, rate limit & auth guard tests
 ├── phase3_ai_engine_test.dart                      # AI schema, multi-dept, PII blur, 500m & 50-concurrency tests
+├── phase4_daily_utility_test.dart                  # Directory filters, EvoSwitch math, stale guard & eco action tests
 └── widget_test.dart                                # App smoke tests
 ```
 
@@ -216,9 +260,9 @@ test/
 |:---:|:---|:---:|
 | **Phase 1** | Foundation, Auth, Theme, Legal, Media Storage & Splash | Completed |
 | **Phase 2** | CivicBook Geofenced Feed, CivicFlow Grievances & Guest-First Access | Completed |
-| **Phase 3** | **AI Vision Triage, Multi-Dept Routing, PII Blur & 500m Duplicate Shield** | **Completed (Current)** |
-| **Phase 4** | My Neighbourhood, EvoSwitch Habits & Circular Living Directory | Up Next |
-| **Phase 5** | Eco Missions, Append-Only EcoCoin Ledger & Impact Profile | Planned |
+| **Phase 3** | AI Vision Triage, Multi-Dept Routing, PII Blur & 500m Duplicate Shield | Completed |
+| **Phase 4** | **My Neighbourhood, EvoSwitch Habits & Circular Living Directory** | **Completed (Current)** |
+| **Phase 5** | Eco Missions, Append-Only EcoCoin Ledger & Impact Profile | Up Next |
 | **Phase 6** | Eco Buddy Bilingual RAG Assistant | Planned |
 | **Phase 7** | Firebase App Check, Certificate Pinning & Release Builds | Planned |
 
