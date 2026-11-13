@@ -1,13 +1,14 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../../core/utils/auth_guard.dart';
-import '../../../services/cloudinary_service.dart';
-import '../../../services/device_permission_service.dart';
+import '../../../services/environmental_service.dart';
+import '../../../services/location_service.dart';
 import '../../auth/services/auth_service.dart';
+import '../../facilities/models/circular_facility_model.dart';
+import '../../facilities/services/circular_directory_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -17,57 +18,162 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final ImagePicker _picker = ImagePicker();
-  String? _uploadedImageUrl;
-  bool _isUploading = false;
-  String? _uploadStatus;
+  String _selectedLocalityName = 'Dehradun Central';
+  double _activeLatitude = 30.3244;
+  double _activeLongitude = 78.0416;
+  bool _ecoActionCompleted = false;
 
-  Future<void> _testCloudinaryUpload() async {
-    final authed = await AuthGuard.requireLogin(
-      context,
-      ref,
-      actionDescription: 'Sign in to upload verification photos to EVORA.',
+  final Map<String, ({double lat, double lng})> _localities = const {
+    'Dehradun Central': (lat: 30.3244, lng: 78.0416),
+    'Rajpur Road / Jakhan': (lat: 30.3615, lng: 78.0712),
+    'Dalanwala': (lat: 30.3280, lng: 78.0550),
+    'Paltan Bazaar': (lat: 30.3228, lng: 78.0398),
+    'ISBT / Majra': (lat: 30.2970, lng: 78.0080),
+    'West Doon': (lat: 30.3685, lng: 77.8760),
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    final userLoc = ref.read(authProvider).user?.selectedLocality;
+    if (userLoc != null && _localities.containsKey(userLoc)) {
+      _selectedLocalityName = userLoc;
+      _activeLatitude = _localities[userLoc]!.lat;
+      _activeLongitude = _localities[userLoc]!.lng;
+    }
+  }
+
+  Future<void> _useLiveGps() async {
+    final loc = await LocationService.acquireLocation();
+    if (!mounted) return;
+    setState(() {
+      _activeLatitude = loc.latitude;
+      _activeLongitude = loc.longitude;
+      _selectedLocalityName = loc.localityName;
+    });
+
+    ref.read(circularDirectoryProvider.notifier).updateLocation(loc);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Switched to Live GPS: ${loc.localityName}'),
+        backgroundColor: EvoraColors.primary,
+        behavior: SnackBarBehavior.floating,
+      ),
     );
-    if (!authed) return;
+  }
 
-    final granted = await DevicePermissionService.ensureGalleryPermission();
-    if (!granted) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Photo gallery permission is required to select a photo.'),
+  void _showLocalityPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final media = MediaQuery.of(ctx);
+        final bottomInset = media.padding.bottom > media.viewPadding.bottom
+            ? media.padding.bottom
+            : media.viewPadding.bottom;
+
+        return Container(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + bottomInset),
+          decoration: const BoxDecoration(
+            color: EvoraColors.surfaceContainerLowest,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: EvoraColors.outlineVariant,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Select Your Neighborhood',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Customizes local environmental air quality and nearby recycling hubs.',
+                style: TextStyle(fontSize: 12.5, color: EvoraColors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: EvoraColors.secondary.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.my_location, color: EvoraColors.primary, size: 22),
+                ),
+                title: const Text('Use Live GPS Location', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text('Detect exact coordinates automatically'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _useLiveGps();
+                },
+              ),
+              const Divider(height: 20),
+              ..._localities.keys.map((name) {
+                final isSelected = _selectedLocalityName == name;
+                return ListTile(
+                  leading: Icon(
+                    Icons.location_city_outlined,
+                    color: isSelected ? EvoraColors.primary : EvoraColors.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    name,
+                    style: TextStyle(
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                      color: isSelected ? EvoraColors.primary : EvoraColors.onSurface,
+                    ),
+                  ),
+                  trailing: isSelected
+                      ? const Icon(Icons.check_circle, color: EvoraColors.primary)
+                      : null,
+                  onTap: () {
+                    final coords = _localities[name]!;
+                    setState(() {
+                      _selectedLocalityName = name;
+                      _activeLatitude = coords.lat;
+                      _activeLongitude = coords.lng;
+                    });
+                    ref.read(circularDirectoryProvider.notifier).updateLocation(
+                          EvoraLocation(
+                            latitude: coords.lat,
+                            longitude: coords.lng,
+                            localityName: name,
+                          ),
+                        );
+                    Navigator.pop(ctx);
+                  },
+                );
+              }),
+            ],
           ),
         );
-      }
-      return;
-    }
-
-    final pickedFile = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
+      },
     );
+  }
 
-    if (pickedFile == null) return;
-
-    setState(() {
-      _isUploading = true;
-      _uploadStatus = 'Uploading photo to Cloudinary...';
-    });
-
-    final result = await CloudinaryService.uploadImage(
-      File(pickedFile.path),
-      folder: 'civic_reports_test',
+  Future<void> _launchDirections(CircularFacility facility) async {
+    final uri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1&destination=${facility.latitude},${facility.longitude}',
     );
-
-    setState(() {
-      _isUploading = false;
-      if (result.isSuccess) {
-        _uploadedImageUrl = result.url;
-        _uploadStatus = 'Upload Success! EXIF stripped & WebP optimized.';
-      } else {
-        _uploadStatus = result.errorMessage;
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
-    });
+    } catch (_) {}
   }
 
   @override
@@ -75,6 +181,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final authState = ref.watch(authProvider);
     final user = authState.user;
     final textTheme = Theme.of(context).textTheme;
+
+    // Environmental Telemetry Provider
+    final envAsync = ref.watch(
+      environmentalDataProvider((lat: _activeLatitude, lng: _activeLongitude)),
+    );
+
+    // Nearby facilities
+    final directoryNotifier = ref.read(circularDirectoryProvider.notifier);
+    final nearbyHubs = directoryNotifier.getClosestFacilities(limit: 3);
 
     return Scaffold(
       appBar: AppBar(
@@ -89,7 +204,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: const Icon(Icons.eco, color: EvoraColors.primary, size: 20),
             ),
             const SizedBox(width: 10),
-            const Text('EVORA'),
+            const Text(
+              'EVORA',
+              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5),
+            ),
           ],
         ),
         actions: [
@@ -126,339 +244,585 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         bottom: true,
         maintainBottomViewPadding: true,
         child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.paddingOf(context).bottom),
+          padding: EdgeInsets.fromLTRB(
+            20,
+            12,
+            20,
+            24 + MediaQuery.paddingOf(context).bottom,
+          ),
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // User Greeting & Locality Card
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: EvoraColors.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.4)),
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: EvoraColors.primary,
-                    child: Text(
-                      (user?.displayName.isNotEmpty == true)
-                          ? user!.displayName[0].toUpperCase()
-                          : 'R',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 20,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. Warm Greeting & Neighborhood Selector Pill
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: EvoraColors.surfaceContainerLowest,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: EvoraColors.primary,
+                      child: Text(
+                        (user?.displayName.isNotEmpty == true)
+                            ? user!.displayName[0].toUpperCase()
+                            : 'R',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 20,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Namaste, ${user?.displayName ?? "Resident"}',
-                          style: textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Namaste, ${user?.displayName ?? "Resident"}',
+                            style: textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 18,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on,
-                                size: 14, color: EvoraColors.primary),
-                            const SizedBox(width: 4),
-                            Text(
-                              user?.selectedLocality ?? 'Dehradun Central',
-                              style: textTheme.bodySmall?.copyWith(
-                                color: EvoraColors.onSurfaceVariant,
-                                fontWeight: FontWeight.w500,
+                          const SizedBox(height: 4),
+                          InkWell(
+                            onTap: _showLocalityPicker,
+                            borderRadius: BorderRadius.circular(100),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: EvoraColors.surfaceContainerHigh,
+                                borderRadius: BorderRadius.circular(100),
+                                border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.5)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.location_on, size: 14, color: EvoraColors.primary),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      _selectedLocalityName,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: EvoraColors.primary,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.keyboard_arrow_down, size: 16, color: EvoraColors.primary),
+                                ],
                               ),
                             ),
-                          ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 2. Real-Time Environmental Health Card
+              envAsync.when(
+                data: (env) => _buildEnvironmentalCard(env),
+                loading: () => Container(
+                  height: 100,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: EvoraColors.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
                         ),
+                        SizedBox(width: 12),
+                        Text('Reading Doon Valley environmental sensors...'),
                       ],
                     ),
                   ),
+                ),
+                error: (e, _) => _buildEnvironmentalUnavailableCard(),
+              ),
+              const SizedBox(height: 16),
+
+              // 3. Today's Eco Action Card
+              _buildTodayEcoActionCard(),
+              const SizedBox(height: 24),
+
+              // 4. Civic & Sustainability Services Grid (2x2 Clear Cards)
+              const Text(
+                'Essential Civic Services',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Everything you need to report problems, discuss, and adopt sustainable choices.',
+                style: TextStyle(fontSize: 12.5, color: EvoraColors.onSurfaceVariant),
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.15,
+                children: [
+                  _buildServiceCard(
+                    title: 'CivicFlow',
+                    subtitle: 'File formal grievance',
+                    description: 'Report potholes, waste & streetlights with AI triage.',
+                    icon: Icons.assignment_outlined,
+                    color: EvoraColors.primary,
+                    onTap: () => context.push('/civic-flow'),
+                  ),
+                  _buildServiceCard(
+                    title: 'CivicBook',
+                    subtitle: 'Community feed',
+                    description: 'View & upvote 3-5 km neighborhood observations.',
+                    icon: Icons.dynamic_feed_outlined,
+                    color: Colors.teal.shade700,
+                    onTap: () => context.push('/civic-book'),
+                  ),
+                  _buildServiceCard(
+                    title: 'EvoSwitch',
+                    subtitle: 'Green calculator',
+                    description: 'Calculate CO₂ & rupee savings on travel and home habits.',
+                    icon: Icons.swap_calls_outlined,
+                    color: Colors.orange.shade800,
+                    onTap: () => context.push('/evoswitch'),
+                  ),
+                  _buildServiceCard(
+                    title: 'Waste Directory',
+                    subtitle: 'Recycling & hubs',
+                    description: 'Find verified e-waste, composting & repair centers.',
+                    icon: Icons.recycling_outlined,
+                    color: const Color(0xFF0D9488),
+                    onTap: () => context.push('/facilities'),
+                  ),
                 ],
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-            // Today's Eco Action Card
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [EvoraColors.primary, Color(0xFF004D34)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              // 5. Nearby Verified Circular Hubs Carousel
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(100),
+                  const Text(
+                    'Nearest Recycling & Hubs',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                  TextButton.icon(
+                    icon: const Icon(Icons.arrow_forward, size: 16),
+                    label: const Text('View All', style: TextStyle(fontWeight: FontWeight.w700)),
+                    onPressed: () => context.push('/facilities'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (nearbyHubs.isEmpty)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: EvoraColors.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Center(
+                    child: Text('Loading verified municipal facilities...'),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 148,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: nearbyHubs.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 12),
+                    itemBuilder: (ctx, index) {
+                      final hub = nearbyHubs[index];
+                      return Container(
+                        width: 250,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: EvoraColors.surfaceContainerLowest,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.4)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: EvoraColors.primary.withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(hub.category.icon, size: 14, color: EvoraColors.primary),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    hub.category.label,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: EvoraColors.primary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (hub.distanceFormatted.isNotEmpty)
+                                  Text(
+                                    hub.distanceFormatted,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.orange.shade800,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            Text(
+                              hub.name,
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    hub.locality,
+                                    style: const TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                InkWell(
+                                  onTap: () => _launchDirections(hub),
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: EvoraColors.primary.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.directions, size: 12, color: EvoraColors.primary),
+                                        SizedBox(width: 2),
+                                        Text('Map', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: EvoraColors.primary)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              const SizedBox(height: 28),
+
+              // 6. Clean Footer Links
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton(
+                      onPressed: () => context.push('/privacy-policy'),
+                      child: const Text('Privacy Policy'),
                     ),
-                    child: const Text(
-                      "TODAY'S ECO ACTION",
+                    const Text('•', style: TextStyle(color: EvoraColors.outline)),
+                    TextButton(
+                      onPressed: () => context.push('/terms'),
+                      child: const Text('Terms of Service'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnvironmentalCard(EnvironmentalData env) {
+    if (env.isUnavailable) {
+      return _buildEnvironmentalUnavailableCard();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: EvoraColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: env.aqiColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: env.aqiColor, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'AQI ${env.aqi} • ${env.aqiCategory}',
                       style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
+                        color: env.aqiColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Segregate Dry & Wet Waste',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Icon(env.weatherIcon, size: 18, color: EvoraColors.primary),
+                  const SizedBox(width: 4),
                   Text(
-                    'Keep biodegradable kitchen scraps separate from plastics to facilitate municipal composting in Ward 4.',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 13,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: EvoraColors.secondary,
-                      foregroundColor: EvoraColors.onSecondary,
-                    ),
-                    onPressed: () async {
-                      final authed = await AuthGuard.requireLogin(
-                        context,
-                        ref,
-                        actionDescription:
-                            'Sign in to complete daily eco actions and earn Eco Coins.',
-                      );
-                      if (authed && context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Daily eco action rewards unlock in Phase 5 Eco Missions!',
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text('Mark Completed (+10 Eco Coins)'),
+                    '${env.temperatureCelsius.round()}°C',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 24),
-
-            // Cloudinary Verification & Upload Test Box
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: EvoraColors.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.5)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            env.healthAdvisory,
+            style: const TextStyle(fontSize: 12.5, color: EvoraColors.onSurface, height: 1.3),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'PM2.5: ${env.pm25.toStringAsFixed(1)} µg/m³  •  PM10: ${env.pm10.toStringAsFixed(1)} µg/m³',
+                style: const TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: EvoraColors.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  env.isStale ? 'Cached feed' : 'Live sensors',
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: EvoraColors.primary),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnvironmentalUnavailableCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: EvoraColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.3)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.cloud_off_outlined, color: EvoraColors.outline, size: 24),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Environmental Telemetry Offline',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Sensor feeds are temporarily unreachable. Real data will resume once connection restores.',
+                  style: TextStyle(fontSize: 11.5, color: EvoraColors.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayEcoActionCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [EvoraColors.primary, Color(0xFF004D34)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: EvoraColors.primary.withValues(alpha: 0.25),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(100),
+                ),
+                child: const Text(
+                  "TODAY'S ECO ACTION",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (_ecoActionCompleted)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: EvoraColors.secondary,
+                    borderRadius: BorderRadius.circular(100),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.cloud_upload_outlined,
-                          color: EvoraColors.primary),
-                      const SizedBox(width: 8),
+                      Icon(Icons.check, size: 12, color: EvoraColors.onSecondary),
+                      SizedBox(width: 4),
                       Text(
-                        'Cloudinary Storage Test',
-                        style: textTheme.headlineSmall?.copyWith(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                        'Done',
+                        style: TextStyle(
+                          color: EvoraColors.onSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Connected Bucket: ztamooew (Preset: evora_unsigned)\nTest picking and uploading a photo to verify CDN storage & EXIF stripping:',
-                    style: textTheme.bodySmall?.copyWith(
-                      color: EvoraColors.onSurfaceVariant,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Segregate Kitchen Scraps & Plastic Today',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Keeping biodegradable organic waste separate from recyclables facilitates clean municipal composting in the Doon Valley.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 12.5,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _ecoActionCompleted ? Colors.white24 : EvoraColors.secondary,
+              foregroundColor: _ecoActionCompleted ? Colors.white : EvoraColors.onSecondary,
+            ),
+            icon: Icon(_ecoActionCompleted ? Icons.check : Icons.thumb_up_alt_outlined, size: 16),
+            label: Text(_ecoActionCompleted ? 'Completed for Today (+10 Eco Coins)' : 'Mark as Done Today (+10 Eco Coins)'),
+            onPressed: () async {
+              final authed = await AuthGuard.requireLogin(
+                context,
+                ref,
+                actionDescription: 'Sign in to record your daily eco actions and earn Eco Coins.',
+              );
+              if (authed && mounted) {
+                setState(() => _ecoActionCompleted = true);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Awesome! Daily eco habit recorded. Eco Coins balance syncing in Phase 5!',
                     ),
+                    backgroundColor: EvoraColors.primary,
+                    behavior: SnackBarBehavior.floating,
                   ),
-                  const SizedBox(height: 14),
-                  if (_isUploading)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(12),
-                        child: CircularProgressIndicator(),
-                      ),
-                    )
-                  else
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.add_a_photo_outlined),
-                      label: const Text('Pick & Upload Test Photo'),
-                      onPressed: _testCloudinaryUpload,
-                    ),
-                  if (_uploadStatus != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _uploadStatus!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _uploadedImageUrl != null
-                            ? EvoraColors.primary
-                            : EvoraColors.error,
-                      ),
-                    ),
-                  ],
-                  if (_uploadedImageUrl != null) ...[
-                    const SizedBox(height: 12),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        _uploadedImageUrl!,
-                        height: 160,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Core Pillars Navigation Grid
-            Text(
-              'Civic & Sustainability Services',
-              style: textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.25,
-              children: [
-                _buildServiceCard(
-                  context,
-                  title: 'CivicFlow',
-                  subtitle: 'Official grievance wizard',
-                  icon: Icons.assignment_outlined,
-                  color: EvoraColors.primary,
-                  onTap: () => context.push('/civic-flow'),
-                ),
-                _buildServiceCard(
-                  context,
-                  title: 'CivicBook',
-                  subtitle: '3-5 km community feed',
-                  icon: Icons.dynamic_feed_outlined,
-                  color: EvoraColors.secondaryContainer,
-                  iconColor: EvoraColors.onSecondaryContainer,
-                  onTap: () => context.push('/civic-book'),
-                ),
-                _buildServiceCard(
-                  context,
-                  title: 'EvoSwitch',
-                  subtitle: 'Green alternative engine',
-                  icon: Icons.swap_calls_outlined,
-                  color: EvoraColors.tertiaryContainer,
-                  iconColor: Colors.white,
-                  onTap: () async {
-                    final authed = await AuthGuard.requireLogin(
-                      context,
-                      ref,
-                      actionDescription: 'Sign in to explore personalized sustainable swaps in EvoSwitch.',
-                    );
-                    if (authed && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('EvoSwitch engine arrives in Phase 4!')),
-                      );
-                    }
-                  },
-                ),
-                _buildServiceCard(
-                  context,
-                  title: 'Waste Directory',
-                  subtitle: 'Recycling & e-waste hubs',
-                  icon: Icons.delete_outline,
-                  color: EvoraColors.surfaceContainerHigh,
-                  onTap: () async {
-                    final authed = await AuthGuard.requireLogin(
-                      context,
-                      ref,
-                      actionDescription: 'Sign in to interact with verified recycling & e-waste hubs.',
-                    );
-                    if (authed && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Circular Waste Directory arrives in Phase 4!')),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-
-            // Footer Links
-            Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  TextButton(
-                    onPressed: () => context.push('/privacy-policy'),
-                    child: const Text('Privacy Policy'),
-                  ),
-                  const Text('•', style: TextStyle(color: EvoraColors.outline)),
-                  TextButton(
-                    onPressed: () => context.push('/terms'),
-                    child: const Text('Terms of Service'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
-        ),
+                );
+              }
+            },
+          ),
+        ],
       ),
-    ),
-  );
+    );
   }
 
-  Widget _buildServiceCard(
-    BuildContext context, {
+  Widget _buildServiceCard({
     required String title,
     required String subtitle,
+    required String description,
     required IconData icon,
     required Color color,
-    Color? iconColor,
     required VoidCallback onTap,
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: EvoraColors.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.4)),
         ),
         child: Column(
@@ -468,29 +832,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: iconColor ?? color, size: 22),
+              child: Icon(icon, color: color, size: 22),
             ),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: EvoraColors.outline,
-                  ),
-                  maxLines: 1,
+                  description,
+                  style: const TextStyle(fontSize: 10.5, color: EvoraColors.onSurfaceVariant, height: 1.2),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

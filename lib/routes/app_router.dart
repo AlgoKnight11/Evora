@@ -8,6 +8,8 @@ import '../features/civic_book/screens/post_detail_screen.dart';
 import '../features/civic_flow/screens/case_detail_screen.dart';
 import '../features/civic_flow/screens/civic_flow_cases_screen.dart';
 import '../features/civic_flow/screens/civic_flow_wizard_screen.dart';
+import '../features/evoswitch/screens/evoswitch_screen.dart';
+import '../features/facilities/screens/facilities_directory_screen.dart';
 import '../features/legal/screens/privacy_policy_screen.dart';
 import '../features/legal/screens/terms_and_conditions_screen.dart';
 import '../features/neighbourhood/screens/home_screen.dart';
@@ -147,6 +149,26 @@ GoRouter createAppRouter({String initialLocation = '/splash'}) {
           final id = state.pathParameters['id'] ?? '';
           return CaseDetailScreen(caseId: id);
         },
+      ),
+
+      // Phase 4 Routes: Circular Living Directory & EvoSwitch
+      GoRoute(
+        path: '/facilities',
+        name: 'facilities',
+        pageBuilder: (context, state) => _buildFadePage(
+          context: context,
+          state: state,
+          child: const FacilitiesDirectoryScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/evoswitch',
+        name: 'evoswitch',
+        pageBuilder: (context, state) => _buildFadePage(
+          context: context,
+          state: state,
+          child: const EvoSwitchScreen(),
+        ),
       ),
     ],
   );
