@@ -108,13 +108,18 @@ class EnvironmentalData {
 /// with strict anti-hallucination / stale-data fallback guardrails.
 class EnvironmentalService {
   final http.Client _client;
-  static const String _cacheKey = 'evora_env_telemetry_v1';
-  static const Duration _cacheTtl = Duration(minutes: 30);
+  static const Duration _cacheTtl = Duration(minutes: 20);
 
-  EnvironmentalData? _cachedInMemory;
-  DateTime? _lastFetchTime;
+  // In-memory cache keyed by 2-decimal rounded coordinates (~1.1km grid)
+  final Map<String, ({EnvironmentalData data, DateTime fetchTime})> _cacheInMemory = {};
 
   EnvironmentalService({http.Client? client}) : _client = client ?? http.Client();
+
+  static String _coordKey(double lat, double lng) =>
+      '${lat.toStringAsFixed(2)}_${lng.toStringAsFixed(2)}';
+
+  static String _diskCacheKey(double lat, double lng) =>
+      'evora_env_telemetry_v2_${_coordKey(lat, lng)}';
 
   /// Fetches real-time environmental data for given coordinates
   Future<EnvironmentalData> getTelemetry({
@@ -122,12 +127,14 @@ class EnvironmentalService {
     required double longitude,
     bool forceRefresh = false,
   }) async {
-    // 1. Check in-memory cache
-    if (!forceRefresh &&
-        _cachedInMemory != null &&
-        _lastFetchTime != null &&
-        DateTime.now().difference(_lastFetchTime!) < _cacheTtl) {
-      return _cachedInMemory!;
+    final key = _coordKey(latitude, longitude);
+
+    // 1. Check in-memory cache for these specific coordinates
+    if (!forceRefresh && _cacheInMemory.containsKey(key)) {
+      final cached = _cacheInMemory[key]!;
+      if (DateTime.now().difference(cached.fetchTime) < _cacheTtl) {
+        return cached.data;
+      }
     }
 
     try {
@@ -182,17 +189,16 @@ class EnvironmentalService {
           isUnavailable: false,
         );
 
-        _cachedInMemory = data;
-        _lastFetchTime = DateTime.now();
-        await _persistToDisk(data);
+        _cacheInMemory[key] = (data: data, fetchTime: DateTime.now());
+        await _persistToDisk(latitude, longitude, data);
         return data;
       }
     } catch (e) {
-      LoggingService.logBreadcrumb('Environmental API fetch error: $e');
+      LoggingService.logBreadcrumb('Environmental API fetch error for ($latitude, $longitude): $e');
     }
 
-    // 3. Network or API error occurred -> check disk cache
-    final diskCached = await _loadFromDisk();
+    // 3. Network or API error occurred -> check disk cache for these coordinates
+    final diskCached = await _loadFromDisk(latitude, longitude);
     if (diskCached != null) {
       // Return cached version marked as stale
       return EnvironmentalData.fromJson(diskCached, isStale: true);
@@ -245,17 +251,17 @@ class EnvironmentalService {
     return 250;
   }
 
-  Future<void> _persistToDisk(EnvironmentalData data) async {
+  Future<void> _persistToDisk(double lat, double lng, EnvironmentalData data) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey, jsonEncode(data.toJson()));
+      await prefs.setString(_diskCacheKey(lat, lng), jsonEncode(data.toJson()));
     } catch (_) {}
   }
 
-  Future<Map<String, dynamic>?> _loadFromDisk() async {
+  Future<Map<String, dynamic>?> _loadFromDisk(double lat, double lng) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final str = prefs.getString(_cacheKey);
+      final str = prefs.getString(_diskCacheKey(lat, lng));
       if (str != null) return jsonDecode(str) as Map<String, dynamic>;
     } catch (_) {}
     return null;

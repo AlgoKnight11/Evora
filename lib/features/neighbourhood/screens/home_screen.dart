@@ -84,6 +84,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     ref.read(circularDirectoryProvider.notifier).updateLocation(loc);
+    ref.invalidate(environmentalDataProvider);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -188,6 +189,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             localityName: name,
                           ),
                         );
+                    ref.invalidate(environmentalDataProvider);
                     Navigator.pop(ctx);
                   },
                 );
@@ -293,14 +295,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: SafeArea(
         bottom: true,
         maintainBottomViewPadding: true,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            12,
-            20,
-            24 + MediaQuery.paddingOf(context).bottom,
-          ),
-          child: Column(
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(environmentalDataProvider);
+            try {
+              await ref.read(
+                environmentalDataProvider((lat: _activeLatitude, lng: _activeLongitude)).future,
+              );
+            } catch (_) {}
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              12,
+              20,
+              24 + MediaQuery.paddingOf(context).bottom,
+            ),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 1. Warm Greeting & Neighborhood Selector Pill
@@ -618,6 +630,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -672,6 +685,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Text(
                     '${env.temperatureCelsius.round()}°C',
                     style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                  ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () => ref.invalidate(environmentalDataProvider),
+                    borderRadius: BorderRadius.circular(100),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.refresh, size: 16, color: EvoraColors.onSurfaceVariant),
+                    ),
                   ),
                 ],
               ),

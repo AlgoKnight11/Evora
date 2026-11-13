@@ -163,6 +163,80 @@ void main() {
       expect(data.healthAdvisory, contains('acceptable'));
     });
 
+    test('Changing coordinates fetches separate telemetry and does not cross-pollute cache', () async {
+      SharedPreferences.setMockInitialValues({});
+
+      final mockClient = MockClient((request) async {
+        final uri = request.url.toString();
+        if (uri.contains('latitude=28.6139') && uri.contains('air-quality')) {
+          return http.Response(
+            jsonEncode({
+              'current': {
+                'pm10': 180.0,
+                'pm2_5': 120.0,
+                'us_aqi': 245,
+              }
+            }),
+            200,
+          );
+        }
+        if (uri.contains('latitude=28.6139') && uri.contains('forecast')) {
+          return http.Response(
+            jsonEncode({
+              'current': {
+                'temperature_2m': 19.0,
+                'relative_humidity_2m': 60.0,
+                'weather_code': 45,
+              }
+            }),
+            200,
+          );
+        }
+        if (uri.contains('air-quality')) {
+          return http.Response(
+            jsonEncode({
+              'current': {
+                'pm10': 42.0,
+                'pm2_5': 18.5,
+                'us_aqi': 62,
+              }
+            }),
+            200,
+          );
+        }
+        if (uri.contains('forecast')) {
+          return http.Response(
+            jsonEncode({
+              'current': {
+                'temperature_2m': 23.5,
+                'relative_humidity_2m': 54.0,
+                'weather_code': 2,
+              }
+            }),
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final service = EnvironmentalService(client: mockClient);
+
+      // First query: Dehradun
+      final doonData = await service.getTelemetry(
+        latitude: 30.3244,
+        longitude: 78.0416,
+      );
+      expect(doonData.aqi, 62);
+
+      // Second query: Delhi without forceRefresh (must fetch Delhi, NOT return Dehradun cache)
+      final delhiData = await service.getTelemetry(
+        latitude: 28.6139,
+        longitude: 77.2090,
+      );
+      expect(delhiData.aqi, 245);
+      expect(delhiData.aqiCategory, 'Severe / Hazardous');
+    });
+
     test('Enforces stale-data guardrail: returns unavailable object when sensors offline and no cache (zero hallucination)', () async {
       SharedPreferences.setMockInitialValues({});
 
