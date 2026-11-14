@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -141,7 +142,15 @@ class _MissionsScreenState extends ConsumerState<MissionsScreen> {
                       ),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        8,
+                        16,
+                        math.max(
+                          MediaQuery.of(context).padding.bottom,
+                          MediaQuery.of(context).viewPadding.bottom,
+                        ) + 24,
+                      ),
                       itemCount: displayedMissions.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 14),
                       itemBuilder: (context, index) {

@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../../core/utils/auth_guard.dart';
 import '../../../services/device_permission_service.dart';
@@ -251,10 +253,16 @@ class _MissionDetailScreenState extends ConsumerState<MissionDetailScreen> {
             icon: const Icon(Icons.share_outlined),
             tooltip: 'Share Mission',
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Shared mission: ${mission.title}'),
-                  behavior: SnackBarBehavior.floating,
+              SharePlus.instance.share(
+                ShareParams(
+                  text: '🌿 Join me in the "${mission.title}" campaign on EVORA!\n\n'
+                      '${mission.description}\n\n'
+                      '📍 Location: ${mission.locality}\n'
+                      '⏱️ Time Commitment: ${mission.timeCommitment}\n'
+                      '🪙 Reward: +${mission.ecoCoinsReward} EcoCoins\n\n'
+                      'Let\'s build a sustainable Dehradun together! Open EVORA to join this mission.',
+                  subject: 'EVORA Community Mission: ${mission.title}',
+                  title: 'Share EVORA Campaign Mission',
                 ),
               );
             },
@@ -263,7 +271,7 @@ class _MissionDetailScreenState extends ConsumerState<MissionDetailScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -338,15 +346,100 @@ class _MissionDetailScreenState extends ConsumerState<MissionDetailScreen> {
                     const Divider(height: 1),
                     const SizedBox(height: 14),
 
-                    // Quick metadata row
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildMetaItem(Icons.location_on_outlined, 'Location', mission.locality),
-                        _buildMetaItem(Icons.timer_outlined, 'Commitment', mission.timeCommitment),
-                        _buildMetaItem(Icons.people_outline, 'Participants',
-                            '${mission.participantsCount}/${mission.maxParticipants}'),
-                      ],
+                    // Quick metadata details container (prevents horizontal overflow)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: EvoraColors.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.location_on_outlined, size: 16, color: EvoraColors.primary),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Location',
+                                      style: TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      mission.locality,
+                                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Divider(height: 1),
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(Icons.timer_outlined, size: 16, color: EvoraColors.primary),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Commitment',
+                                            style: TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            mission.timeCommitment,
+                                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Icon(Icons.people_outline, size: 16, color: EvoraColors.primary),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Participants',
+                                            style: TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${mission.participantsCount} / ${mission.maxParticipants}',
+                                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -614,19 +707,37 @@ class _MissionDetailScreenState extends ConsumerState<MissionDetailScreen> {
         ),
       ),
 
-      // Bottom Floating Action Button
-      bottomSheet: Container(
-        padding: const EdgeInsets.all(16),
+      // Persistent Bottom Action Bar (Protected from Android 3-Button & Gesture Navigation Bars)
+      bottomNavigationBar: Container(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          10,
+          16,
+          math.max(
+            math.max(
+              MediaQuery.of(context).padding.bottom,
+              MediaQuery.of(context).viewPadding.bottom,
+            ),
+            16.0,
+          ) + 12.0,
+        ),
         decoration: BoxDecoration(
           color: EvoraColors.surfaceContainerLowest,
-          border: Border(top: BorderSide(color: EvoraColors.outlineVariant.withValues(alpha: 0.4))),
-        ),
-        child: SafeArea(
-          child: SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: _buildActionButton(mission, participation),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
+            ),
+          ],
+          border: Border(
+            top: BorderSide(color: EvoraColors.outlineVariant.withValues(alpha: 0.4)),
           ),
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: _buildActionButton(mission, participation),
         ),
       ),
     );
@@ -695,23 +806,6 @@ class _MissionDetailScreenState extends ConsumerState<MissionDetailScreen> {
       icon: const Icon(Icons.check_circle, color: EvoraColors.primary),
       label: const Text('Mission Completed (+EcoCoins Credited)'),
       onPressed: () => context.push('/ledger'),
-    );
-  }
-
-  Widget _buildMetaItem(IconData icon, String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 13, color: EvoraColors.onSurfaceVariant),
-            const SizedBox(width: 4),
-            Text(label, style: const TextStyle(fontSize: 11, color: EvoraColors.onSurfaceVariant)),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-      ],
     );
   }
 

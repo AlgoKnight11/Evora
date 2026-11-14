@@ -69,3 +69,6 @@ screen_splash_flutter.png
 # Firebase configuration credentials
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
+
+.kotlin/
+android/.kotlin/

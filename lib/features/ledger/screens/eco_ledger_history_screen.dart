@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -287,7 +288,15 @@ class EcoLedgerHistoryScreen extends ConsumerWidget {
                       ),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        6,
+                        16,
+                        math.max(
+                          MediaQuery.of(context).padding.bottom,
+                          MediaQuery.of(context).viewPadding.bottom,
+                        ) + 24,
+                      ),
                       itemCount: transactions.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 10),
                       itemBuilder: (context, index) {

@@ -1,6 +1,12 @@
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../../core/theme/evora_colors.dart';
 import '../../auth/services/auth_service.dart';
 import '../models/impact_profile_model.dart';
@@ -135,6 +141,9 @@ class ImpactProfileScreen extends ConsumerWidget {
   }
 
   void _showShareCardModal(BuildContext context, CitizenImpactSummary impact, String userName, String locality) {
+    final cardKey = GlobalKey();
+    bool isSharing = false;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -146,152 +155,237 @@ class ImpactProfileScreen extends ConsumerWidget {
           media.viewPadding.bottom,
           media.viewInsets.bottom,
         ].reduce((a, b) => a > b ? a : b);
-        final bottomInset = rawBottom > 0 ? (rawBottom + 16.0) : 56.0;
+        final bottomInset = math.max(rawBottom, 16.0) + 16.0;
 
-        return Container(
-          padding: EdgeInsets.fromLTRB(22, 16, 22, bottomInset),
-          decoration: const BoxDecoration(
-            color: EvoraColors.surfaceContainerLowest,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 44,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: EvoraColors.outlineVariant,
-                  borderRadius: BorderRadius.circular(100),
-                ),
+        return StatefulBuilder(
+          builder: (sheetCtx, setSheetState) {
+            return Container(
+              padding: EdgeInsets.fromLTRB(22, 16, 22, bottomInset),
+              decoration: const BoxDecoration(
+                color: EvoraColors.surfaceContainerLowest,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
               ),
-              const SizedBox(height: 20),
-
-              // Visual Share Card
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF004D34),
-                      EvoraColors.primary,
-                      Colors.teal.shade900,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: EvoraColors.outlineVariant,
+                      borderRadius: BorderRadius.circular(100),
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.18),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.eco, color: EvoraColors.primary, size: 20),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'EVORA UTTARAKHAND',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.2,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(100),
-                          ),
-                          child: Text(
-                            impact.tier.title,
-                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      userName,
-                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
-                    ),
-                    Text(
-                      '$locality • Citizen Impact Record',
-                      style: const TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                    const SizedBox(height: 20),
-                    const Divider(color: Colors.white24, height: 1),
-                    const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        _buildShareMetric('${impact.co2AvoidedKg.toStringAsFixed(0)} kg', 'CO₂e Avoided'),
-                        _buildShareMetric('${impact.wasteDivertedKg.toStringAsFixed(0)} kg', 'Waste Diverted'),
-                        _buildShareMetric('${impact.waterSavedLiters.toStringAsFixed(0)} L', 'Water Protected'),
-                        _buildShareMetric('${impact.treesSupported}', 'Trees Planted'),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        const Icon(Icons.verified, color: Colors.lightGreenAccent, size: 16),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${impact.totalEcoCoins} Verified EcoCoins Earned',
-                          style: const TextStyle(
-                            color: Colors.lightGreenAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
+                  // Visual Share Card (Wrapped in RepaintBoundary for high-res PNG export)
+                  RepaintBoundary(
+                    key: cardKey,
+                    child: Container(
+                      padding: const EdgeInsets.all(22),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFF004D34),
+                            EvoraColors.primary,
+                            Colors.teal.shade900,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.share),
-                  label: const Text('Share Milestone with Community'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: EvoraColors.primary,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Impact card saved! Ready to share.'),
-                        backgroundColor: EvoraColors.primary,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: 20,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.eco, color: EvoraColors.primary, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'EVORA UTTARAKHAND',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.2,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(100),
+                                ),
+                                child: Text(
+                                  impact.tier.title,
+                                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          Text(
+                            userName,
+                            style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900),
+                          ),
+                          Text(
+                            '$locality • Citizen Impact Record',
+                            style: const TextStyle(color: Colors.white70, fontSize: 12),
+                          ),
+                          const SizedBox(height: 20),
+                          const Divider(color: Colors.white24, height: 1),
+                          const SizedBox(height: 16),
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              _buildShareMetric('${impact.co2AvoidedKg.toStringAsFixed(0)} kg', 'CO₂e Avoided'),
+                              _buildShareMetric('${impact.wasteDivertedKg.toStringAsFixed(0)} kg', 'Waste Diverted'),
+                              _buildShareMetric('${impact.waterSavedLiters.toStringAsFixed(0)} L', 'Water Protected'),
+                              _buildShareMetric('${impact.treesSupported}', 'Trees Planted'),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              const Icon(Icons.verified, color: Colors.lightGreenAccent, size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${impact.totalEcoCoins} Verified EcoCoins Earned',
+                                style: const TextStyle(
+                                  color: Colors.lightGreenAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: EvoraColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: isSharing
+                          ? null
+                          : () async {
+                              setSheetState(() => isSharing = true);
+                              try {
+                                final shareCaption =
+                                    '🌿 My Verified EVORA Sustainability Record\n\n'
+                                    '👤 Citizen: $userName\n'
+                                    '🏅 Tier: ${impact.tier.title}\n'
+                                    '📍 Locality: $locality, Uttarakhand\n\n'
+                                    '🌍 Cumulative Environmental Action:\n'
+                                    '• ${impact.co2AvoidedKg.toStringAsFixed(1)} kg CO₂e Emissions Avoided\n'
+                                    '• ${impact.wasteDivertedKg.toStringAsFixed(1)} kg Waste Diverted from Dumpsites\n'
+                                    '• ${impact.waterSavedLiters.toStringAsFixed(0)} L Clean Water Protected\n'
+                                    '• ${impact.treesSupported} Native Trees Planted\n'
+                                    '• ${impact.totalEcoCoins} Verified EcoCoins Earned\n\n'
+                                    'Verified under UN Sustainable Development Goals (SDGs 6, 11, 12, 13, 15) on EVORA — Himalayan Modernism in Civic Action!';
+
+                                // Capture visual card widget as high-resolution PNG image
+                                final boundary = cardKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+                                if (boundary != null) {
+                                  final image = await boundary.toImage(pixelRatio: 3.0);
+                                  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+                                  if (byteData != null) {
+                                    final buffer = byteData.buffer.asUint8List();
+                                    final tempDir = await getTemporaryDirectory();
+                                    final filePath = '${tempDir.path}/evora_impact_${DateTime.now().millisecondsSinceEpoch}.png';
+                                    final file = File(filePath);
+                                    await file.writeAsBytes(buffer);
+
+                                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+
+                                    await SharePlus.instance.share(
+                                      ShareParams(
+                                        files: [XFile(file.path, mimeType: 'image/png')],
+                                        text: shareCaption,
+                                        subject: 'My EVORA Uttarakhand Citizen Impact Milestone',
+                                        title: 'Share EVORA Impact Record',
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                }
+
+                                // Fallback to formatted text share if image rasterization fails
+                                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                                await SharePlus.instance.share(
+                                  ShareParams(
+                                    text: shareCaption,
+                                    subject: 'My EVORA Uttarakhand Citizen Impact Milestone',
+                                    title: 'Share EVORA Impact Record',
+                                  ),
+                                );
+                              } catch (e) {
+                                debugPrint('[Share] Error sharing impact card: $e');
+                                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                                await SharePlus.instance.share(
+                                  ShareParams(
+                                    text: '🌿 I am driving climate action with EVORA! Avoided ${impact.co2AvoidedKg.toStringAsFixed(1)} kg CO₂e and earned ${impact.totalEcoCoins} EcoCoins in Dehradun.',
+                                    subject: 'My EVORA Impact Milestone',
+                                    title: 'Share EVORA Impact Record',
+                                  ),
+                                );
+                              }
+                            },
+                      child: isSharing
+                          ? const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                ),
+                                SizedBox(width: 10),
+                                Text('Generating Card...', style: TextStyle(fontWeight: FontWeight.w700)),
+                              ],
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.share, size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Share to WhatsApp / Social Media',
+                                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -334,7 +428,15 @@ class ImpactProfileScreen extends ConsumerWidget {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          padding: EdgeInsets.fromLTRB(
+            16,
+            12,
+            16,
+            math.max(
+              MediaQuery.of(context).padding.bottom,
+              MediaQuery.of(context).viewPadding.bottom,
+            ) + 36,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
