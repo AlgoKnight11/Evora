@@ -121,6 +121,15 @@ class EnvironmentalService {
   static String _diskCacheKey(double lat, double lng) =>
       'evora_env_telemetry_v2_${_coordKey(lat, lng)}';
 
+  /// Clears in-memory cache to force a fresh network fetch
+  void clearCache({double? latitude, double? longitude}) {
+    if (latitude != null && longitude != null) {
+      _cacheInMemory.remove(_coordKey(latitude, longitude));
+    } else {
+      _cacheInMemory.clear();
+    }
+  }
+
   /// Fetches real-time environmental data for given coordinates
   Future<EnvironmentalData> getTelemetry({
     required double latitude,
@@ -128,6 +137,10 @@ class EnvironmentalService {
     bool forceRefresh = false,
   }) async {
     final key = _coordKey(latitude, longitude);
+
+    if (forceRefresh) {
+      _cacheInMemory.remove(key);
+    }
 
     // 1. Check in-memory cache for these specific coordinates
     if (!forceRefresh && _cacheInMemory.containsKey(key)) {
@@ -147,8 +160,8 @@ class EnvironmentalService {
       );
 
       final responses = await Future.wait([
-        _client.get(weatherUri).timeout(const Duration(seconds: 5)),
-        _client.get(airQualityUri).timeout(const Duration(seconds: 5)),
+        _client.get(weatherUri).timeout(const Duration(seconds: 10)),
+        _client.get(airQualityUri).timeout(const Duration(seconds: 10)),
       ]);
 
       final weatherRes = responses[0];

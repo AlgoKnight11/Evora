@@ -76,6 +76,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _loadEcoActionStatus(user?.uid);
   }
 
+  bool _isRefreshingEnv = false;
+
+  Future<void> _refreshEnvironmentalData({bool showFeedback = true}) async {
+    if (_isRefreshingEnv) return;
+    setState(() => _isRefreshingEnv = true);
+
+    try {
+      // 1. Clear in-memory cache for active coordinates so fresh telemetry is fetched
+      ref.read(environmentalServiceProvider).clearCache(
+        latitude: _activeLatitude,
+        longitude: _activeLongitude,
+      );
+
+      // 2. Invalidate provider and await fresh network result
+      ref.invalidate(environmentalDataProvider);
+      await ref.read(
+        environmentalDataProvider((lat: _activeLatitude, lng: _activeLongitude)).future,
+      );
+
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Updated real-time air quality & weather feed.'),
+            duration: Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not refresh sensors: $e'),
+            backgroundColor: EvoraColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingEnv = false);
+      }
+    }
+  }
+
   Future<void> _useLiveGps() async {
     final loc = await LocationService.acquireLocation();
     if (!mounted) return;
@@ -86,6 +131,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
 
     ref.read(circularDirectoryProvider.notifier).updateLocation(loc);
+    ref.read(environmentalServiceProvider).clearCache(
+          latitude: loc.latitude,
+          longitude: loc.longitude,
+        );
     ref.invalidate(environmentalDataProvider);
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -190,6 +239,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             longitude: coords.lng,
                             localityName: name,
                           ),
+                        );
+                    ref.read(environmentalServiceProvider).clearCache(
+                          latitude: coords.lat,
+                          longitude: coords.lng,
                         );
                     ref.invalidate(environmentalDataProvider);
                     Navigator.pop(ctx);
@@ -308,14 +361,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         bottom: true,
         maintainBottomViewPadding: true,
         child: RefreshIndicator(
-          onRefresh: () async {
-            ref.invalidate(environmentalDataProvider);
-            try {
-              await ref.read(
-                environmentalDataProvider((lat: _activeLatitude, lng: _activeLongitude)).future,
-              );
-            } catch (_) {}
-          },
+          onRefresh: () => _refreshEnvironmentalData(showFeedback: false),
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
@@ -772,11 +818,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   const SizedBox(width: 6),
                   InkWell(
-                    onTap: () => ref.invalidate(environmentalDataProvider),
+                    onTap: _isRefreshingEnv ? null : () => _refreshEnvironmentalData(showFeedback: true),
                     borderRadius: BorderRadius.circular(100),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(Icons.refresh, size: 16, color: EvoraColors.onSurfaceVariant),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: _isRefreshingEnv
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: EvoraColors.primary,
+                              ),
+                            )
+                          : const Icon(Icons.refresh, size: 16, color: EvoraColors.onSurfaceVariant),
                     ),
                   ),
                 ],
@@ -822,11 +877,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: EvoraColors.outlineVariant.withValues(alpha: 0.3)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.cloud_off_outlined, color: EvoraColors.outline, size: 24),
-          SizedBox(width: 12),
-          Expanded(
+          const Icon(Icons.cloud_off_outlined, color: EvoraColors.outline, size: 24),
+          const SizedBox(width: 12),
+          const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -836,11 +891,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 SizedBox(height: 2),
                 Text(
-                  'Sensor feeds are temporarily unreachable. Real data will resume once connection restores.',
+                  'Sensor feeds are temporarily unreachable.',
                   style: TextStyle(fontSize: 11.5, color: EvoraColors.onSurfaceVariant),
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: _isRefreshingEnv
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            tooltip: 'Reload AQI Sensors',
+            onPressed: _isRefreshingEnv ? null : () => _refreshEnvironmentalData(showFeedback: true),
           ),
         ],
       ),
