@@ -10,10 +10,14 @@ import '../features/civic_flow/screens/civic_flow_cases_screen.dart';
 import '../features/civic_flow/screens/civic_flow_wizard_screen.dart';
 import '../features/evoswitch/screens/evoswitch_screen.dart';
 import '../features/facilities/screens/facilities_directory_screen.dart';
+import '../features/ledger/screens/eco_ledger_history_screen.dart';
 import '../features/legal/screens/privacy_policy_screen.dart';
 import '../features/legal/screens/terms_and_conditions_screen.dart';
+import '../features/missions/screens/mission_detail_screen.dart';
+import '../features/missions/screens/missions_screen.dart';
 import '../features/neighbourhood/screens/home_screen.dart';
 import '../features/onboarding/screens/onboarding_screen.dart';
+import '../features/profile/screens/impact_profile_screen.dart';
 import '../features/splash/screens/splash_screen.dart';
 
 /// Helper for smooth cross-fade route transitions
@@ -168,6 +172,43 @@ GoRouter createAppRouter({String initialLocation = '/splash'}) {
           context: context,
           state: state,
           child: const EvoSwitchScreen(),
+        ),
+      ),
+
+      // Phase 5 Routes: Eco Missions, Impact Profile & Ledger
+      GoRoute(
+        path: '/missions',
+        name: 'missions',
+        pageBuilder: (context, state) => _buildFadePage(
+          context: context,
+          state: state,
+          child: const MissionsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/missions/:id',
+        name: 'mission-detail',
+        builder: (context, state) {
+          final id = state.pathParameters['id'] ?? '';
+          return MissionDetailScreen(missionId: id);
+        },
+      ),
+      GoRoute(
+        path: '/profile',
+        name: 'profile',
+        pageBuilder: (context, state) => _buildFadePage(
+          context: context,
+          state: state,
+          child: const ImpactProfileScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/ledger',
+        name: 'ledger',
+        pageBuilder: (context, state) => _buildFadePage(
+          context: context,
+          state: state,
+          child: const EcoLedgerHistoryScreen(),
         ),
       ),
     ],

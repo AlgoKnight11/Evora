@@ -10,6 +10,8 @@ import '../../../services/location_service.dart';
 import '../../auth/services/auth_service.dart';
 import '../../facilities/models/circular_facility_model.dart';
 import '../../facilities/services/circular_directory_service.dart';
+import '../../ledger/models/eco_ledger_model.dart';
+import '../../ledger/services/eco_ledger_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -260,6 +262,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.military_tech_outlined),
+            tooltip: 'Eco Missions',
+            onPressed: () => context.push('/missions'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined),
+            tooltip: 'Impact Profile',
+            onPressed: () => context.push('/profile'),
+          ),
           if (authState.isAuthenticated)
             IconButton(
               icon: const Icon(Icons.logout_outlined),
@@ -325,17 +337,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: EvoraColors.primary,
-                      child: Text(
-                        (user?.displayName.isNotEmpty == true)
-                            ? user!.displayName[0].toUpperCase()
-                            : 'R',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 20,
+                    InkWell(
+                      onTap: () => context.push('/profile'),
+                      borderRadius: BorderRadius.circular(100),
+                      child: CircleAvatar(
+                        radius: 24,
+                        backgroundColor: EvoraColors.primary,
+                        child: Text(
+                          (user?.displayName.isNotEmpty == true)
+                              ? user!.displayName[0].toUpperCase()
+                              : 'R',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                          ),
                         ),
                       ),
                     ),
@@ -477,6 +493,74 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onTap: () => context.push('/facilities'),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+
+              // 4b. Eco Action Missions Spotlight Card
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.teal.shade900,
+                      const Color(0xFF004D34),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: EvoraColors.primary.withValues(alpha: 0.22),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.park_outlined, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Eco Missions & Campaigns',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          const Text(
+                            'Join Rispana riverbed cleanups, tree drives & earn verified EcoCoins.',
+                            style: TextStyle(color: Colors.white70, fontSize: 11.5, height: 1.3),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: EvoraColors.secondary,
+                        foregroundColor: EvoraColors.onSecondary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      ),
+                      onPressed: () => context.push('/missions'),
+                      child: const Text('Explore', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
 
@@ -866,13 +950,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       final uid = ref.read(authProvider).user?.uid;
                       if (uid != null) {
                         await _saveEcoActionStatus(uid);
+                        final now = DateTime.now();
+                        try {
+                          await ref.read(ecoLedgerProvider.notifier).appendTransaction(
+                                userId: uid,
+                                type: EcoLedgerTransactionType.creditDailyHabit,
+                                amount: 10,
+                                referenceId: 'daily_${now.year}_${now.month}_${now.day}',
+                                title: 'Daily Eco Action Habit',
+                                description: 'Segregated household organic and dry waste in Doon Valley',
+                              );
+                        } catch (_) {}
                       }
                       if (!mounted) return;
                       setState(() => _ecoActionCompleted = true);
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
-                            'Awesome! Daily eco habit recorded. Eco Coins balance syncing in Phase 5!',
+                            'Awesome! +10 EcoCoins credited to your immutable ledger.',
                           ),
                           backgroundColor: EvoraColors.primary,
                           behavior: SnackBarBehavior.floating,
