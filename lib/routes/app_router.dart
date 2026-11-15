@@ -8,6 +8,7 @@ import '../features/civic_book/screens/post_detail_screen.dart';
 import '../features/civic_flow/screens/case_detail_screen.dart';
 import '../features/civic_flow/screens/civic_flow_cases_screen.dart';
 import '../features/civic_flow/screens/civic_flow_wizard_screen.dart';
+import '../features/eco_buddy/screens/eco_buddy_screen.dart';
 import '../features/evoswitch/screens/evoswitch_screen.dart';
 import '../features/facilities/screens/facilities_directory_screen.dart';
 import '../features/ledger/screens/eco_ledger_history_screen.dart';
@@ -209,6 +210,17 @@ GoRouter createAppRouter({String initialLocation = '/splash'}) {
           context: context,
           state: state,
           child: const EcoLedgerHistoryScreen(),
+        ),
+      ),
+
+      // Phase 6 Route: Conversational AI — Eco Buddy
+      GoRoute(
+        path: '/eco-buddy',
+        name: 'eco-buddy',
+        pageBuilder: (context, state) => _buildFadePage(
+          context: context,
+          state: state,
+          child: const EcoBuddyScreen(),
         ),
       ),
     ],

@@ -165,6 +165,43 @@ Phase 5 establishes the core trust, verification, and motivation infrastructure 
 
 ---
 
+## 🤖 Phase 6 Milestone: Conversational AI — Eco Buddy (Bilingual Grounded RAG Assistant)
+
+Phase 6 delivers **Eco Buddy**, EVORA's intelligent conversational assistant designed for Dehradun and Himalayan urban local bodies. Built with dual English and Hindi (Devanagari) fluency, Eco Buddy anchors all guidance in verified municipal databases while enforcing strict safety guardrails.
+
+### 1. Bilingual Conversational Interface (`EcoBuddyScreen`)
+* **Himalayan Modernism Chat Experience:** Features custom user and assistant chat bubbles, suggested quick prompt chips, typing indicators, and clean markdown rendering (headers, bolding, bullet points).
+* **Instant Language Toggle:** One-tap toggle between **English** and **Hindi (हिन्दी)** with +2px line-height balancing to prevent Devanagari vowel mark (*matra*) clipping.
+* **Quick Access Chips:** Pre-seeded with common civic queries: *E-Waste Drop-off*, *Waste Segregation*, *Local Composting*, and *Active Missions*.
+* **System Inset Protection:** Safe area padding protects the message input bar and send button from overlapping Android 3-button navigation bars and on-screen keyboards.
+
+### 2. Verified Local Grounded RAG Pipeline (`EcoBuddyGroundingEngine`)
+* **Strict Grounding Dataset:** Retrieves facts from EVORA's verified local repositories:
+  - 8 Dehradun circular recycling hubs (`CircularDirectoryNotifier.seedFacilities`) with exact addresses, contact numbers, operating hours, and accepted material tags.
+  - 6 active community campaigns (`MissionsNotifier.seedMissions`).
+  - Official CPCB & Nagar Nigam Dehradun waste segregation standards (Green Bin organic, Blue Bin dry recyclables, Red/Black hazardous, and Sanitary wrapping).
+* **Zero-Hallucination & Anti-Speculation Guardrail:** When asked about unsupported municipal policies (such as property taxes, trade licenses, building construction permits, birth certificates, or traffic fines), strictly refuses with:
+  > *"I currently do not have verified information for this in your area. Please check the Circular Directory or file an inquiry via CivicFlow."* (or Devanagari equivalent: *"वर्तमान में मेरे पास आपके क्षेत्र के लिए इसकी सत्यापित जानकारी नहीं है। कृपया सर्कुलर डायरेक्टरी देखें या सिविकफ्लो (CivicFlow) के माध्यम से जानकारी प्राप्त करें।"*)
+* Eco Buddy never fabricates phone numbers, addresses, opening hours, or municipal regulations.
+
+### 3. Deterministic Emergency Safety Interceptor (`EmergencyHazardInterceptor`)
+* **Zero Latency Interception:** Immediately detects life and property hazard keywords (*gas leak*, *cylinder blast*, *active fire*, *building collapse*, *fallen live wire*, *chemical spill*, *toxic fumes*, *आग*, *गैस रिसाव*, *धमाका*, *विस्फोट*) before calling the LLM.
+* **Official Uttarakhand Helplines:** Surfaces a prominent red emergency card with direct one-tap phone dialers:
+  - **All-Emergency Response (ERSS):** `112`
+  - **Nagar Nigam Dehradun Disaster Cell:** `1800-180-4155`
+  - **Fire & Emergency Rescue:** `101`
+  - **State Disaster Response Force (SDRF):** `1070`
+
+### 4. Sliding-Window Rate Limiter & Abuse Shield (`EcoBuddyRateLimiter`)
+* **API Cost & Abuse Protection:** Enforces a sliding-window rate limit of **max 15 messages per 5 minutes per user** (`AppConstants.maxEcoBuddyMessagesPerFiveMinutes`).
+* **Graceful Cooldown:** Displays an active countdown cooldown banner when the limit is reached without throwing unhandled exceptions or crashing the app.
+
+### 5. Dashboard & Router Integration
+* Registered route `/eco-buddy` in [app_router.dart](file:///d:/Evora/lib/routes/app_router.dart).
+* Added Eco Buddy Quick Action in the AppBar, an AI Assistant spotlight card in the body, and an extended Floating Action Button (`Ask Eco Buddy`) on [HomeScreen](file:///d:/Evora/lib/features/neighbourhood/screens/home_screen.dart).
+
+---
+
 ## 🏗️ Project Architecture
 
 ```text
@@ -209,6 +246,10 @@ lib/
 │   │   │   ├── civic_flow_wizard_screen.dart       # AI triage, multi-dept routing & 3-step wizard
 │   │   │   └── case_detail_screen.dart             # Multi-dept chips, 10-stage stepper & verification
 │   │   └── services/civic_flow_service.dart        # Riverpod CivicFlowNotifier & rate limiting
+│   ├── eco_buddy/
+│   │   ├── models/eco_buddy_models.dart            # EcoBuddyMessage, GroundedSource, EmergencyHelpline & QuickPrompts
+│   │   ├── screens/eco_buddy_screen.dart           # Bilingual conversational UI, markdown bubbles & emergency dialers
+│   │   └── services/eco_buddy_service.dart         # Grounded RAG engine, zero-latency emergency interceptor & rate limiter
 │   ├── evoswitch/
 │   │   ├── models/evoswitch_models.dart            # EvoSwitch category schemas, options & calculation results
 │   │   ├── screens/evoswitch_screen.dart           # Interactive green calculator & verified methodology modal
@@ -310,9 +351,9 @@ test/
 | **Phase 2** | CivicBook Geofenced Feed, CivicFlow Grievances & Guest-First Access | Completed |
 | **Phase 3** | AI Vision Triage, Multi-Dept Routing, PII Blur & 500m Duplicate Shield | Completed |
 | **Phase 4** | My Neighbourhood, EvoSwitch Habits & Circular Living Directory | Completed |
-| **Phase 5** | **Eco Missions, Append-Only EcoCoin Ledger & Impact Profile** | **Completed (Current)** |
-| **Phase 6** | Eco Buddy Bilingual RAG Assistant | Up Next |
-| **Phase 7** | Firebase App Check, Certificate Pinning & Release Builds | Planned |
+| **Phase 5** | Eco Missions, Append-Only EcoCoin Ledger & Impact Profile | Completed |
+| **Phase 6** | **Eco Buddy Bilingual RAG Assistant** | **Completed (Current)** |
+| **Phase 7** | Firebase App Check, Certificate Pinning & Release Builds | Up Next |
 
 ---
 

@@ -316,6 +316,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.smart_toy_outlined),
+            tooltip: 'Eco Buddy AI',
+            onPressed: () => context.push('/eco-buddy'),
+          ),
+          IconButton(
             icon: const Icon(Icons.military_tech_outlined),
             tooltip: 'Eco Missions',
             onPressed: () => context.push('/missions'),
@@ -608,6 +613,79 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+
+              // 4c. Eco Buddy Conversational AI Spotlight Card
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: EvoraColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: EvoraColors.primary.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: EvoraColors.primary.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.smart_toy_outlined, color: EvoraColors.primary, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Text(
+                                'Eco Buddy AI Assistant',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'EN • हिन्दी',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: EvoraColors.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          const Text(
+                            'Grounded in verified Dehradun recycling centers, CPCB waste segregation rules & local missions.',
+                            style: TextStyle(
+                              color: EvoraColors.onSurfaceVariant,
+                              fontSize: 11.5,
+                              height: 1.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: EvoraColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () => context.push('/eco-buddy'),
+                      child: const Text('Chat', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(height: 24),
 
               // 5. Nearby Verified Circular Hubs Carousel
@@ -760,6 +838,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/eco-buddy'),
+        backgroundColor: EvoraColors.primary,
+        foregroundColor: Colors.white,
+        elevation: 4,
+        icon: const Icon(Icons.chat_outlined),
+        label: const Text(
+          'Ask Eco Buddy',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+        ),
       ),
     );
   }
