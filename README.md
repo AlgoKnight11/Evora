@@ -132,6 +132,39 @@ Phase 4 establishes everyday sustainability utility through real-time environmen
 
 ---
 
+## 🛡️ Phase 5 Milestone: Trust Infrastructure — Eco Missions, Append-Only Eco Coins Ledger & Citizen Impact Profile
+
+Phase 5 establishes the core trust, verification, and motivation infrastructure of EVORA through structured community campaigns, an immutable cryptographic ledger for civic tokens, and personal impact attribution mapped directly to UN Sustainable Development Goals.
+
+### 1. Community Eco Missions & Verification State Machine (`MissionsScreen` & `MissionsService`)
+* **6 Dehradun Pilot Campaigns:** Seeded with realistic local actions and safety guidelines:
+  1. *Rispana & Bindal Riverbed Cleanliness Drive:* 120 EcoCoins, 25 kg waste diverted, 450 L water protected, 18 kg $\text{CO}_2\text{e}$ avoided, SDGs [6, 11, 12, 15].
+  2. *Old Rajpur 10-Tree Native Sapling Drive:* 150 EcoCoins, 2 native broadleaf trees planted, 65 kg $\text{CO}_2\text{e}$ avoided, SDGs [13, 15].
+  3. *Patel Road E-Waste Drop Challenge:* 80 EcoCoins, 4.5 kg toxic e-waste diverted, 32 kg $\text{CO}_2\text{e}$ avoided, SDGs [11, 12].
+  4. *7-Day Green Transit Commuter Challenge:* 100 EcoCoins, 28.5 kg $\text{CO}_2\text{e}$ avoided via electric bus or cycling, SDGs [11, 13].
+  5. *14-Day Kitchen Waste Home Composting Pilot:* 140 EcoCoins, 12 kg organic waste diverted from landfill, 7.8 kg $\text{CO}_2\text{e}$ avoided, SDGs [12, 13].
+  6. *Paltan Bazaar Zero Single-Use Plastic Pledge:* 90 EcoCoins, 2 kg single-use packaging eliminated, 8.5 kg $\text{CO}_2\text{e}$ avoided, SDGs [12, 14].
+* **Lifecycle State Machine:** Governs transitions across `Browse` $\rightarrow$ `Joined` $\rightarrow$ `In Progress` $\rightarrow$ `Submit Proof` $\rightarrow$ `Under Verification` $\rightarrow$ `Completed & Rewarded` (or `Rejected` with actionable feedback).
+* **PII-Sanitized Proof Pipeline:** Proof photos pass through on-device EXIF stripping and face/plate blur (`PiiRedactionService`) before Cloudinary upload (`missions/proof`).
+* **Instant Simulation Testing Mode:** Built-in community audit simulation trigger on `MissionDetailScreen` allowing instant local verification and reward crediting.
+* **Balanced 2-Tier Metadata Layout:** Responsive location, commitment, and participant metrics with zero horizontal overflow across all mobile screen widths.
+
+### 2. Cryptographic Append-Only Eco Coins Ledger (`EcoLedgerModel` & `EcoLedgerService`)
+* **SHA-256 Block Chaining:** Every ledger transaction cryptographically hashes the previous entry's hash ($H_n = \text{SHA256}(H_{n-1} \parallel \text{id} \parallel \text{userId} \parallel \text{amount} \parallel \text{balanceAfter} \parallel \text{timestamp})$) chaining back to `GENESIS_BLOCK_EVORA_DOON_V1`.
+* **Client Write-Lock:** Balances are strictly derived from verifiable chained transactions and cannot be altered by direct client-side state manipulation.
+* **Tamper-Evident Verification Walk:** Automatic $O(N)$ audit walk verifies block integrity; any payload or parent hash tampering immediately invalidates the chain.
+* **Transaction History & Cryptographic Audit UI (`EcoLedgerHistoryScreen`):** Chronological transaction cards with verified audit badge and expandable audit sheet detailing raw block hashes and timestamps.
+* **Statutory Non-Monetary Disclaimer:** Strictly codifies that EcoCoins are digital civic acknowledgements with zero cash equivalent, non-redeemable for fiat, and non-convertible into cryptocurrency under Indian regulations.
+
+### 3. Citizen Impact Profile & UN SDG 2030 Mapping (`ImpactProfileScreen` & `ImpactProfileService`)
+* **Cumulative Metric Grid:** Aggregates real-world verified achievements: total avoided $\text{kg CO}_2\text{e}$, kilograms of waste diverted, liters of water saved, and native trees planted.
+* **UN SDG 2030 Mapping:** Precise attribution to UN SDGs 6 (Clean Water), 11 (Sustainable Cities), 12 (Responsible Consumption), 13 (Climate Action), and 15 (Life on Land) with an interactive methodology modal.
+* **Citizen Eco Tiers & Honors:** Progressive civic rank progression (*Himalayan Seedling* $\rightarrow$ *Valley Guardian* $\rightarrow$ *Ridge Protector* $\rightarrow$ *Doon Eco Pioneer*) and earned badge gallery (*Rispana Guardian*, *Himalayan Forester*, *Circular Tech Ally*, *Civic Reporter*, *Valley Custodian*).
+* **Native High-Res Social Sharing (`SharePlus`):** Captures styled impact cards into high-resolution PNG images via `RepaintBoundary` and opens the native Android "Share to:" dialog to redirect directly into WhatsApp, Instagram, Telegram, Twitter/X, and Messages with verified metrics pre-filled.
+* **Zero System Nav Collisions:** Employs persistent `bottomNavigationBar` with dynamic `viewPadding.bottom` safe area protection across `MissionDetailScreen` and modal sheets.
+
+---
+
 ## 🏗️ Project Architecture
 
 ```text
@@ -184,14 +217,28 @@ lib/
 │   │   ├── models/circular_facility_model.dart     # CircularFacility schema, categories & verified badges
 │   │   ├── screens/facilities_directory_screen.dart # Interactive search, radius filtering & detail sheets
 │   │   └── services/circular_directory_service.dart # Seeded Dehradun facilities & proximity sorter
+│   ├── ledger/
+│   │   ├── models/eco_ledger_model.dart            # SHA-256 tamper-evident ledger & legal non-monetary disclaimers
+│   │   ├── screens/eco_ledger_history_screen.dart  # Chronological transaction log & cryptographic audit details
+│   │   └── services/eco_ledger_service.dart        # Riverpod EcoLedgerNotifier with hash chaining & write-lock
 │   ├── legal/
 │   │   └── screens/
 │   │       ├── privacy_policy_screen.dart          # DPDP Act compliant privacy disclosures
 │   │       └── terms_and_conditions_screen.dart    # Civic rules & non-monetary EcoCoin disclaimers
+│   ├── missions/
+│   │   ├── models/mission_model.dart               # EcoMission & MissionParticipation lifecycle state models
+│   │   ├── screens/
+│   │   │   ├── missions_screen.dart                # Campaign catalog with category chips & status filtering
+│   │   │   └── mission_detail_screen.dart          # 2-tier metadata, PII proof submission & simulation mode
+│   │   └── services/missions_service.dart          # MissionsNotifier, 6 pilot campaigns & auto-rewarding
 │   ├── neighbourhood/
 │   │   └── screens/home_screen.dart                # Senior-friendly dashboard, locality picker & telemetry card
 │   ├── onboarding/
 │   │   └── screens/onboarding_screen.dart          # 3-slide first-time user introduction
+│   ├── profile/
+│   │   ├── models/impact_profile_model.dart        # UN SDGs 6/11/12/13/15, CitizenEcoTier & CitizenImpactSummary
+│   │   ├── screens/impact_profile_screen.dart      # Cumulative impact grid, SDG methodology & native social sharing
+│   │   └── services/impact_profile_service.dart    # citizenImpactProvider aggregating ledger, missions & CivicFlow
 │   └── splash/
 │       └── screens/splash_screen.dart              # Animated logo intro & route resolution
 ├── routes/
@@ -209,6 +256,7 @@ test/
 ├── phase2_civic_test.dart                          # Spatial math, real persistence, rate limit & auth guard tests
 ├── phase3_ai_engine_test.dart                      # AI schema, multi-dept, PII blur, 500m & 50-concurrency tests
 ├── phase4_daily_utility_test.dart                  # Directory filters, EvoSwitch math, stale guard & eco action tests
+├── phase5_trust_infrastructure_test.dart           # Mission lifecycle, SHA-256 hash chaining & SDG aggregation tests
 └── widget_test.dart                                # App smoke tests
 ```
 
@@ -261,9 +309,9 @@ test/
 | **Phase 1** | Foundation, Auth, Theme, Legal, Media Storage & Splash | Completed |
 | **Phase 2** | CivicBook Geofenced Feed, CivicFlow Grievances & Guest-First Access | Completed |
 | **Phase 3** | AI Vision Triage, Multi-Dept Routing, PII Blur & 500m Duplicate Shield | Completed |
-| **Phase 4** | **My Neighbourhood, EvoSwitch Habits & Circular Living Directory** | **Completed (Current)** |
-| **Phase 5** | Eco Missions, Append-Only EcoCoin Ledger & Impact Profile | Up Next |
-| **Phase 6** | Eco Buddy Bilingual RAG Assistant | Planned |
+| **Phase 4** | My Neighbourhood, EvoSwitch Habits & Circular Living Directory | Completed |
+| **Phase 5** | **Eco Missions, Append-Only EcoCoin Ledger & Impact Profile** | **Completed (Current)** |
+| **Phase 6** | Eco Buddy Bilingual RAG Assistant | Up Next |
 | **Phase 7** | Firebase App Check, Certificate Pinning & Release Builds | Planned |
 
 ---
