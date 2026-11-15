@@ -617,7 +617,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // 4c. Eco Buddy Conversational AI Spotlight Card
               Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: EvoraColors.primary.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(20),
@@ -628,34 +628,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 child: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: EvoraColors.primary.withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.smart_toy_outlined, color: EvoraColors.primary, size: 24),
+                      child: const Icon(Icons.smart_toy_outlined, color: EvoraColors.primary, size: 22),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 6,
+                            runSpacing: 2,
                             children: [
-                              Text(
-                                'Eco Buddy AI Assistant',
+                              const Text(
+                                'Eco Buddy AI',
                                 style: TextStyle(
-                                  fontSize: 15,
+                                  fontSize: 14.5,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              SizedBox(width: 6),
-                              Text(
-                                'EN • हिन्दी',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: EvoraColors.primary,
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: EvoraColors.primary.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Text(
+                                  'EN • हिन्दी',
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: EvoraColors.primary,
+                                  ),
                                 ),
                               ),
                             ],
@@ -665,7 +674,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             'Grounded in verified Dehradun recycling centers, CPCB waste segregation rules & local missions.',
                             style: TextStyle(
                               color: EvoraColors.onSurfaceVariant,
-                              fontSize: 11.5,
+                              fontSize: 11,
                               height: 1.3,
                             ),
                           ),
@@ -677,8 +686,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: EvoraColors.primary,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        minimumSize: const Size(0, 36),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
                       onPressed: () => context.push('/eco-buddy'),
                       child: const Text('Chat', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),

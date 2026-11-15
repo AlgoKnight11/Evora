@@ -112,8 +112,8 @@ class _EcoBuddyScreenState extends ConsumerState<EcoBuddyScreen> {
         title: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 34,
+              height: 34,
               decoration: BoxDecoration(
                 color: EvoraColors.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
@@ -121,26 +121,32 @@ class _EcoBuddyScreenState extends ConsumerState<EcoBuddyScreen> {
               child: const Icon(
                 Icons.eco,
                 color: EvoraColors.primary,
-                size: 20,
+                size: 19,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        isHindi ? 'इको बडी (Eco Buddy)' : 'Eco Buddy',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
+                      Flexible(
+                        child: Text(
+                          isHindi ? 'इको बडी' : 'Eco Buddy',
+                          style: const TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                         decoration: BoxDecoration(
                           color: EvoraColors.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(6),
@@ -148,7 +154,7 @@ class _EcoBuddyScreenState extends ConsumerState<EcoBuddyScreen> {
                         child: const Text(
                           'AI Grounded',
                           style: TextStyle(
-                            fontSize: 9.5,
+                            fontSize: 8.5,
                             fontWeight: FontWeight.w800,
                             color: EvoraColors.primary,
                           ),
@@ -161,7 +167,7 @@ class _EcoBuddyScreenState extends ConsumerState<EcoBuddyScreen> {
                         ? 'देहरादून नगर निगम सत्यापित ज्ञान'
                         : 'Verified Dehradun Municipal Knowledge',
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 10.5,
                       color: EvoraColors.onSurfaceVariant,
                     ),
                     maxLines: 1,
@@ -173,26 +179,44 @@ class _EcoBuddyScreenState extends ConsumerState<EcoBuddyScreen> {
           ],
         ),
         actions: [
-          // Language toggle button (EN / HI)
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              foregroundColor: EvoraColors.primary,
+          // Compact language toggle pill
+          Center(
+            child: InkWell(
+              onTap: () => ref.read(ecoBuddyProvider.notifier).toggleLanguage(),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: EvoraColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: EvoraColors.primary.withValues(alpha: 0.25)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.translate, size: 13, color: EvoraColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      isHindi ? 'हिन्दी' : 'EN',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11.5,
+                        color: EvoraColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            icon: const Icon(Icons.translate, size: 16),
-            label: Text(
-              isHindi ? 'हिन्दी' : 'EN',
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-            ),
-            onPressed: () {
-              ref.read(ecoBuddyProvider.notifier).toggleLanguage();
-            },
           ),
           IconButton(
-            icon: const Icon(Icons.refresh, size: 22),
+            icon: const Icon(Icons.refresh, size: 20),
+            padding: const EdgeInsets.all(8),
+            constraints: const BoxConstraints(),
             tooltip: isHindi ? 'रीसेट करें' : 'Clear Chat',
             onPressed: _showClearChatDialog,
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Column(

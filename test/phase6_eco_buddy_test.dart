@@ -208,7 +208,7 @@ void main() {
       await tester.tap(find.text('EN'));
       await tester.pumpAndSettle();
 
-      expect(find.text('इको बडी (Eco Buddy)'), findsOneWidget);
+      expect(find.text('इको बडी'), findsOneWidget);
       expect(find.text('हिन्दी'), findsOneWidget);
     });
   });
