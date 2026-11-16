@@ -1,0 +1,62 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidImage() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024 // 10MB maximum limit
+        && (
+          request.resource.contentType.matches('image/jpeg') ||
+          request.resource.contentType.matches('image/png') ||
+          request.resource.contentType.matches('image/webp')
+        );
+    }
+
+    // Default deny for all unmatched paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // User profile pictures / avatars
+    match /users/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && isValidImage();
+    }
+
+    // Tenant-scoped CivicFlow grievance incident photos
+    match /tenants/{tenantId}/cases/{caseId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidImage();
+      allow update, delete: if isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'ward_officer'
+      );
+    }
+
+    // Tenant-scoped CivicBook social / community issue media
+    match /tenants/{tenantId}/civicBook/{postId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidImage();
+      allow update, delete: if isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Tenant-scoped Mission completion photo proofs
+    match /tenants/{tenantId}/missions/{missionId}/{userId}/{fileName} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) && isValidImage();
+    }
+  }
+}

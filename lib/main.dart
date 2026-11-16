@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'core/theme/evora_theme.dart';
 import 'routes/app_router.dart';
+import 'services/app_check_service.dart';
 import 'services/logging_service.dart';
 
 void main() async {
@@ -49,6 +50,9 @@ void main() async {
       await Firebase.initializeApp();
       LoggingService.logBreadcrumb('Firebase Core initialized with default config.');
     }
+
+    // Initialize Firebase App Check attestation shield
+    await AppCheckService().initialize();
   } catch (e) {
     LoggingService.logBreadcrumb(
       'Firebase config not detected yet (development mock mode enabled). '

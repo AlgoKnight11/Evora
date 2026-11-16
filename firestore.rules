@@ -1,0 +1,665 @@
+rules_version = '2';
+
+// ===============================================================
+// EVORA PLATFORM — CLOUD FIRESTORE SECURITY RULES
+// ===============================================================
+//
+// Multi-tenant architecture for civic environmental management,
+// municipal governance, transparent audit logs, and citizen rewards.
+//
+// Assumed Data Models:
+//
+// 1. Top-Level Collection: users/{uid}
+//    - uid: string (required, matches auth.uid)
+//    - displayName: string (required, 1..100 chars)
+//    - email: string (optional, valid email format)
+//    - phoneNumber: string (optional, max 30 chars)
+//    - photoUrl: string (optional, URL format, max 2048 chars)
+//    - tenantId: string (required, 5..64 chars, e.g. 'tenant_dehradun_01')
+//    - selectedLocality: string (required, 1..200 chars)
+//    - selectedWardId: string (optional, max 64 chars)
+//    - preferredLanguage: string ('en' | 'hi')
+//    - ecoCoinBalance: int (non-negative)
+//    - role: string ('citizen' | 'ward_officer' | 'worker' | 'admin')
+//    - accountStatus: string ('registered' | 'restricted' | 'suspended')
+//    - consentAccepted: bool
+//    - consentVersion: string (max 20 chars)
+//    - createdAt: string or timestamp
+//
+// 2. Tenant Subcollection: tenants/{tenantId}/members/{uid}
+//    - uid: string (matches document id)
+//    - tenantId: string (matches parent tenantId)
+//    - role: string ('citizen' | 'ward_officer' | 'worker' | 'admin')
+//    - joinedAt: string or timestamp
+//
+// 3. Tenant Subcollection: tenants/{tenantId}/civicFlowCases/{caseId}
+//    - id / caseNumber: string (required)
+//    - tenantId: string (required, matches parent tenantId)
+//    - reporterUid / citizenId: string (required, matches reporter auth.uid)
+//    - citizenName: string (optional, max 100 chars)
+//    - category: string (required, max 100 chars)
+//    - subcategory: string (required, max 100 chars)
+//    - description: string (required, 5..3000 chars)
+//    - locality: string (required, max 200 chars)
+//    - status: string (required; on create must be 'submitted')
+//    - priority: string ('low' | 'medium' | 'high' | 'urgent')
+//    - latitude: number (-90..90)
+//    - longitude: number (-180..180)
+//    - imageUrl: string (optional URL)
+//    - supportersCount: int (non-negative)
+//    - assignedDepartment / leadDepartment: string (optional)
+//    - officerNotes / resolutionNotes: string (optional, max 3000 chars)
+//
+// 4. Tenant Subcollection: tenants/{tenantId}/civicBookPosts/{postId}
+//    - id: string (required)
+//    - tenantId: string (required, matches parent tenantId)
+//    - authorId / reporterUid: string (required, matches author auth.uid)
+//    - authorName: string (required, max 100 chars)
+//    - title: string (required, 3..200 chars)
+//    - description: string (required, 5..3000 chars)
+//    - category: string (required, max 100 chars)
+//    - locality: string (required, max 200 chars)
+//    - upvotesCount: int (non-negative)
+//    - downvotesCount: int (non-negative)
+//    - commentsCount: int (non-negative)
+//    - createdAt: string or timestamp
+//
+// 5. Tenant Subcollection: tenants/{tenantId}/facilities/{facilityId}
+//    - Verified circular economy facility directory (public read, admin write)
+//
+// 6. Tenant Subcollection: tenants/{tenantId}/missions/{missionId}
+//    - Civic environmental campaign missions (public read, admin write)
+//
+// 7. Tenant Subcollection: tenants/{tenantId}/missionParticipations/{participationId}
+//    - userId: string (matches participant auth.uid)
+//    - missionId: string (required)
+//    - tenantId: string (required)
+//    - status: string ('available' | 'joined' | 'inProgress' | 'submitted' | 'verified' | 'rejected')
+//    - coinsCredited: int (non-negative, admin-awarded)
+//    - proofImageUrl: string (optional URL)
+//    - proofNotes: string (optional, max 2000 chars)
+//
+// 8. Tenant Subcollection: tenants/{tenantId}/ecoCoinLedger/{transactionId}
+//    - STRICT IMMUTABILITY: append-only, no update, no delete.
+//    - userId: string (matches auth.uid)
+//    - amount: int (credits > 0, debits < 0)
+//    - balanceAfter: int (non-negative)
+//    - previousHash: string (SHA-256 or genesis block, 1..128 chars)
+//    - hash: string (SHA-256 block hash, 1..128 chars)
+//    - type: string ('creditMission' | 'creditDailyHabit' | 'creditCivicParticipation' | 'debitRewardClaim' | 'adjustment')
+//
+// 9. Tenant Subcollection: tenants/{tenantId}/servicePolicies/{policyId}
+//    - Municipal service SLAs and policies (read only, write false)
+//
+// 10. Tenant Subcollection: tenants/{tenantId}/auditEvents/{eventId}
+//     - Append-only compliance and security audit logs (admin read, append create, no update/delete)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Global Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (request.auth.token.get('role', '') == 'admin') ||
+          (request.auth.token.get('admin', false) == true) ||
+          (request.auth.token.email != null &&
+           request.auth.token.email.matches('.*@evora\\.gov\\.in$') &&
+           request.auth.token.get('email_verified', false) == true)
+        );
+    }
+
+    function isSupervisor() {
+      return isAuthenticated() &&
+        (
+          isAdmin() ||
+          request.auth.token.get('role', '') in ['supervisor', 'ward_officer', 'officer']
+        );
+    }
+
+    function isValidTenant(tenantId) {
+      return tenantId is string &&
+             tenantId.size() >= 5 &&
+             tenantId.size() <= 64 &&
+             tenantId.matches('^tenant_[a-z0-9_]+$');
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+             url.size() <= 2048 &&
+             (url.matches('^https://.*') || url.matches('^http://.*'));
+    }
+
+    function isValidOptionalUrl(data, field) {
+      return !(field in data) || data[field] == null || isValidUrl(data[field]);
+    }
+
+    function isValidOptionalString(data, field, minLen, maxLen) {
+      return !(field in data) ||
+             data[field] == null ||
+             (data[field] is string &&
+              data[field].size() >= minLen &&
+              data[field].size() <= maxLen);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validator Functions
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.get('displayName', '') is string &&
+             data.displayName.size() >= 1 &&
+             data.displayName.size() <= 100 &&
+             isValidOptionalString(data, 'email', 3, 150) &&
+             isValidOptionalString(data, 'phoneNumber', 5, 30) &&
+             isValidOptionalUrl(data, 'photoUrl') &&
+             data.get('tenantId', '') is string &&
+             data.tenantId.size() >= 5 &&
+             data.tenantId.size() <= 64 &&
+             data.get('selectedLocality', '') is string &&
+             data.selectedLocality.size() >= 1 &&
+             data.selectedLocality.size() <= 200 &&
+             (!('preferredLanguage' in data) || data.preferredLanguage in ['en', 'hi']) &&
+             (!('ecoCoinBalance' in data) || (data.ecoCoinBalance is int && data.ecoCoinBalance >= 0)) &&
+             (!('role' in data) || data.role in ['citizen', 'ward_officer', 'worker', 'admin']) &&
+             (!('accountStatus' in data) || data.accountStatus in ['registered', 'restricted', 'suspended']);
+    }
+
+    function isValidMember(data) {
+      return data.get('uid', '') is string &&
+             data.uid.size() >= 1 &&
+             data.uid.size() <= 128 &&
+             (!('role' in data) || data.role in ['citizen', 'ward_officer', 'worker', 'admin']);
+    }
+
+    function isValidCivicCase(data) {
+      return data.get('category', '') is string &&
+             data.category.size() >= 2 &&
+             data.category.size() <= 100 &&
+             data.get('subcategory', '') is string &&
+             data.subcategory.size() >= 1 &&
+             data.subcategory.size() <= 100 &&
+             data.get('locality', '') is string &&
+             data.locality.size() >= 1 &&
+             data.locality.size() <= 200 &&
+             data.get('description', '') is string &&
+             data.description.size() >= 5 &&
+             data.description.size() <= 3000 &&
+             data.get('status', '') in [
+               'submitted', 'under_triage', 'needs_info', 'verified',
+               'assigned', 'in_progress', 'blocked', 'resolved_pending',
+               'resolved', 'closed'
+             ] &&
+             (!('priority' in data) || data.priority in ['low', 'medium', 'high', 'urgent']) &&
+             (!('latitude' in data) || (data.latitude is number && data.latitude >= -90.0 && data.latitude <= 90.0)) &&
+             (!('longitude' in data) || (data.longitude is number && data.longitude >= -180.0 && data.longitude <= 180.0)) &&
+             isValidOptionalUrl(data, 'imageUrl') &&
+             isValidOptionalString(data, 'landmark', 1, 200) &&
+             isValidOptionalString(data, 'officerNotes', 1, 3000) &&
+             isValidOptionalString(data, 'citizenFeedback', 1, 1000);
+    }
+
+    function isValidCivicPost(data) {
+      return data.get('title', '') is string &&
+             data.title.size() >= 3 &&
+             data.title.size() <= 200 &&
+             data.get('description', '') is string &&
+             data.description.size() >= 5 &&
+             data.description.size() <= 3000 &&
+             data.get('category', '') is string &&
+             data.category.size() >= 2 &&
+             data.category.size() <= 100 &&
+             data.get('locality', '') is string &&
+             data.locality.size() >= 1 &&
+             data.locality.size() <= 200 &&
+             isValidOptionalUrl(data, 'imageUrl') &&
+             (!('upvotesCount' in data) || (data.upvotesCount is int && data.upvotesCount >= 0)) &&
+             (!('downvotesCount' in data) || (data.downvotesCount is int && data.downvotesCount >= 0)) &&
+             (!('commentsCount' in data) || (data.commentsCount is int && data.commentsCount >= 0)) &&
+             (!('latitude' in data) || (data.latitude is number && data.latitude >= -90.0 && data.latitude <= 90.0)) &&
+             (!('longitude' in data) || (data.longitude is number && data.longitude >= -180.0 && data.longitude <= 180.0));
+    }
+
+    function isValidCivicComment(data) {
+      return data.get('text', '') is string &&
+             data.text.size() >= 1 &&
+             data.text.size() <= 1000 &&
+             data.get('postId', '') is string &&
+             data.postId.size() >= 1 &&
+             data.postId.size() <= 128 &&
+             data.get('authorName', '') is string &&
+             data.authorName.size() >= 1 &&
+             data.authorName.size() <= 100;
+    }
+
+    function isValidMissionParticipation(data) {
+      return data.get('userId', '') is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.get('missionId', '') is string &&
+             data.missionId.size() >= 1 &&
+             data.missionId.size() <= 128 &&
+             data.get('tenantId', '') is string &&
+             data.get('status', '') in [
+               'available', 'joined', 'inProgress', 'submitted', 'verified', 'rejected'
+             ] &&
+             (!('coinsCredited' in data) || (data.coinsCredited is int && data.coinsCredited >= 0)) &&
+             isValidOptionalUrl(data, 'proofImageUrl') &&
+             isValidOptionalString(data, 'proofNotes', 1, 2000) &&
+             isValidOptionalString(data, 'verificationFeedback', 1, 1000);
+    }
+
+    function isValidLedgerEntry(data) {
+      return data.get('userId', '') is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.get('amount', 0) is int &&
+             data.get('balanceAfter', -1) is int &&
+             data.balanceAfter >= 0 &&
+             data.get('previousHash', '') is string &&
+             data.previousHash.size() >= 1 &&
+             data.previousHash.size() <= 128 &&
+             data.get('hash', '') is string &&
+             data.hash.size() >= 1 &&
+             data.hash.size() <= 128 &&
+             data.get('type', '') in [
+               'creditMission', 'creditDailyHabit', 'creditCivicParticipation',
+               'debitRewardClaim', 'adjustment'
+             ] &&
+             data.get('title', '') is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 200 &&
+             isValidOptionalString(data, 'description', 0, 2000) &&
+             isValidOptionalString(data, 'referenceId', 0, 128);
+    }
+
+    function isValidAuditEvent(data) {
+      return data.get('eventType', '') is string &&
+             data.eventType.size() >= 1 &&
+             data.eventType.size() <= 100 &&
+             data.get('actorUid', '') is string &&
+             data.actorUid.size() >= 1 &&
+             data.actorUid.size() <= 128 &&
+             data.get('action', '') is string &&
+             data.action.size() >= 1 &&
+             data.action.size() <= 200;
+    }
+
+    // ===============================================================
+    // Top-Level Collection: users/{uid}
+    // ===============================================================
+
+    match /users/{uid} {
+      // Authenticated users can read user profiles
+      allow read: if isAuthenticated();
+
+      // Only the user themselves or an admin can create/update their profile
+      allow create: if isUser(uid) &&
+                       isValidUser(request.resource.data) &&
+                       (
+                         // Non-admins cannot self-assign privileged roles
+                         request.resource.data.get('role', 'citizen') == 'citizen' ||
+                         isAdmin()
+                       );
+
+      allow update: if (isUser(uid) || isAdmin()) &&
+                       isValidUser(request.resource.data) &&
+                       areImmutableFieldsUnchanged(['uid', 'createdAt']) &&
+                       (
+                         // Non-admins cannot modify or escalate their role
+                         request.resource.data.get('role', 'citizen') == resource.data.get('role', 'citizen') ||
+                         isAdmin()
+                       ) &&
+                       (
+                         // Non-admins cannot alter their account suspension/restriction state
+                         request.resource.data.get('accountStatus', 'registered') == resource.data.get('accountStatus', 'registered') ||
+                         isAdmin()
+                       );
+
+      // Only platform admins can delete user records
+      allow delete: if isAdmin();
+
+      // Subcollections belonging to the user (e.g. notifications, private mission logs)
+      match /{subcollection=**} {
+        allow read, write: if isUser(uid) || isAdmin();
+      }
+    }
+
+    // ===============================================================
+    // Multi-Tenant Hierarchy: tenants/{tenantId}
+    // ===============================================================
+
+    match /tenants/{tenantId} {
+      // Public / authenticated discovery of registered municipal tenants
+      allow read: if isValidTenant(tenantId);
+      allow write: if isValidTenant(tenantId) && isAdmin();
+
+      // -------------------------------------------------------------
+      // Tenant Members: tenants/{tenantId}/members/{uid}
+      // -------------------------------------------------------------
+      match /members/{uid} {
+        allow read: if isValidTenant(tenantId) && isAuthenticated();
+
+        allow create: if isValidTenant(tenantId) &&
+                         (isUser(uid) || isAdmin()) &&
+                         isValidMember(request.resource.data) &&
+                         (
+                           request.resource.data.get('role', 'citizen') == 'citizen' ||
+                           isAdmin()
+                         );
+
+        allow update: if isValidTenant(tenantId) &&
+                         (isUser(uid) || isAdmin()) &&
+                         isValidMember(request.resource.data) &&
+                         areImmutableFieldsUnchanged(['uid', 'tenantId', 'joinedAt']) &&
+                         (
+                           request.resource.data.get('role', 'citizen') == resource.data.get('role', 'citizen') ||
+                           isAdmin()
+                         );
+
+        allow delete: if isValidTenant(tenantId) && isAdmin();
+      }
+
+      // -------------------------------------------------------------
+      // CivicFlow Grievances: tenants/{tenantId}/civicFlowCases/{caseId}
+      // -------------------------------------------------------------
+      match /civicFlowCases/{caseId} {
+        // Authenticated users can read civic grievance cases
+        allow read: if isValidTenant(tenantId) && isAuthenticated();
+
+        // Create: Authenticated citizen filing a grievance
+        allow create: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         isValidCivicCase(request.resource.data) &&
+                         (
+                           request.resource.data.get('reporterUid', '') == request.auth.uid ||
+                           request.resource.data.get('citizenId', '') == request.auth.uid
+                         ) &&
+                         request.resource.data.get('status', '') == 'submitted';
+
+        // Update:
+        // 1. Reporter updating description/photos/feedback while case is active
+        // 2. Municipal officer/admin updating status, department assignment, or resolution notes
+        // 3. Community endorsement (incrementing supportersCount by 1)
+        allow update: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         isValidCivicCase(request.resource.data) &&
+                         (
+                           // 1. Reporter edit while active
+                           (
+                             (
+                               resource.data.get('reporterUid', '') == request.auth.uid ||
+                               resource.data.get('citizenId', '') == request.auth.uid
+                             ) &&
+                             resource.data.get('status', 'submitted') in ['submitted', 'under_triage', 'needs_info'] &&
+                             areImmutableFieldsUnchanged([
+                               'id', 'caseNumber', 'tenantId', 'citizenId', 'reporterUid',
+                               'category', 'subcategory', 'locality', 'createdAt',
+                               'assignedDepartment', 'leadDepartment'
+                             ])
+                           ) ||
+                           // 2. Supervisor / Admin update
+                           (
+                             isSupervisor() &&
+                             areImmutableFieldsUnchanged([
+                               'id', 'caseNumber', 'tenantId', 'citizenId', 'reporterUid', 'createdAt'
+                             ])
+                           ) ||
+                           // 3. Peer community endorsement (+1 supporter)
+                           (
+                             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supportersCount', 'updatedAt']) &&
+                             request.resource.data.supportersCount == resource.data.supportersCount + 1
+                           )
+                         );
+
+        // Deletion of official civic grievance records is strictly disallowed for compliance
+        allow delete: if false;
+      }
+
+      // -------------------------------------------------------------
+      // CivicBook Feed: tenants/{tenantId}/civicBookPosts/{postId}
+      // -------------------------------------------------------------
+      match /civicBookPosts/{postId} {
+        allow read: if isValidTenant(tenantId) && isAuthenticated();
+
+        allow create: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         isValidCivicPost(request.resource.data) &&
+                         (
+                           request.resource.data.get('reporterUid', '') == request.auth.uid ||
+                           request.resource.data.get('authorId', '') == request.auth.uid
+                         );
+
+        // Update:
+        // 1. Upvote / downvote score counter updates
+        // 2. Post author updating title/description/media
+        // 3. Admin moderation
+        allow update: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         (
+                           // 1. Voting score counter updates
+                           (
+                             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                               'upvotesCount', 'downvotesCount', 'commentsCount', 'updatedAt'
+                             ]) &&
+                             isValidCivicPost(request.resource.data)
+                           ) ||
+                           // 2. Author updates own post content
+                           (
+                             (
+                               resource.data.get('reporterUid', '') == request.auth.uid ||
+                               resource.data.get('authorId', '') == request.auth.uid
+                             ) &&
+                             isValidCivicPost(request.resource.data) &&
+                             areImmutableFieldsUnchanged([
+                               'id', 'tenantId', 'authorId', 'reporterUid', 'createdAt'
+                             ])
+                           ) ||
+                           // 3. Admin moderation
+                           (
+                             isAdmin() &&
+                             isValidCivicPost(request.resource.data)
+                           )
+                         );
+
+        // Disallow delete unless author/reporter or admin
+        allow delete: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         (
+                           resource.data.get('reporterUid', '') == request.auth.uid ||
+                           resource.data.get('authorId', '') == request.auth.uid ||
+                           isAdmin()
+                         );
+
+        // Subcollection: votes/{uid} (Tracks 1 vote per citizen)
+        match /votes/{voteUid} {
+          allow read: if isValidTenant(tenantId) && isAuthenticated();
+          allow create, update, delete: if isValidTenant(tenantId) && isUser(voteUid);
+        }
+
+        // Subcollection: comments/{commentId}
+        match /comments/{commentId} {
+          allow read: if isValidTenant(tenantId) && isAuthenticated();
+          allow create: if isValidTenant(tenantId) &&
+                           isAuthenticated() &&
+                           isValidCivicComment(request.resource.data) &&
+                           (
+                             request.resource.data.get('authorId', '') == request.auth.uid ||
+                             request.resource.data.get('userId', '') == request.auth.uid
+                           );
+          allow update, delete: if isValidTenant(tenantId) &&
+                                   isAuthenticated() &&
+                                   (
+                                     resource.data.get('authorId', '') == request.auth.uid ||
+                                     resource.data.get('userId', '') == request.auth.uid ||
+                                     isAdmin()
+                                   );
+        }
+      }
+
+      // -------------------------------------------------------------
+      // Circular Facilities: tenants/{tenantId}/facilities/{facilityId}
+      // -------------------------------------------------------------
+      match /facilities/{facilityId} {
+        // Public and authenticated read allowed for municipal circular facility directory
+        allow read: if isValidTenant(tenantId);
+        // Writing restricted to municipal admins
+        allow write: if isValidTenant(tenantId) && isAdmin();
+      }
+
+      // -------------------------------------------------------------
+      // Eco Missions: tenants/{tenantId}/missions/{missionId}
+      // -------------------------------------------------------------
+      match /missions/{missionId} {
+        // Public and authenticated read allowed for citizen sustainability missions
+        allow read: if isValidTenant(tenantId);
+        // Writing restricted to municipal admins
+        allow write: if isValidTenant(tenantId) && isAdmin();
+      }
+
+      // -------------------------------------------------------------
+      // Mission Participations: tenants/{tenantId}/missionParticipations/{participationId}
+      // -------------------------------------------------------------
+      match /missionParticipations/{participationId} {
+        // User can read own participations; admin can inspect all
+        allow read: if isValidTenant(tenantId) &&
+                       isAuthenticated() &&
+                       (resource.data.get('userId', '') == request.auth.uid || isAdmin());
+
+        // Authenticated citizen joining a campaign mission
+        allow create: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         request.resource.data.get('userId', '') == request.auth.uid &&
+                         isValidMissionParticipation(request.resource.data) &&
+                         request.resource.data.get('status', 'joined') in ['available', 'joined', 'inProgress'] &&
+                         request.resource.data.get('coinsCredited', 0) == 0;
+
+        // Update:
+        // Citizen submitting action proof (cannot self-verify or self-credit coins)
+        // Admin or supervisor reviewing proof and verifying completion
+        allow update: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         isValidMissionParticipation(request.resource.data) &&
+                         (
+                           // 1. Citizen updating proof and progress
+                           (
+                             isUser(resource.data.get('userId', '')) &&
+                             areImmutableFieldsUnchanged(['userId', 'missionId', 'tenantId', 'joinedAt']) &&
+                             request.resource.data.get('status', '') in ['joined', 'inProgress', 'submitted'] &&
+                             request.resource.data.get('coinsCredited', 0) == resource.data.get('coinsCredited', 0)
+                           ) ||
+                           // 2. Admin / Supervisor verification
+                           (
+                             isAdmin() || isSupervisor()
+                           )
+                         );
+
+        // Disallow delete to preserve proof history
+        allow delete: if false;
+      }
+
+      // -------------------------------------------------------------
+      // EcoCoin Ledger: tenants/{tenantId}/ecoCoinLedger/{transactionId}
+      // -------------------------------------------------------------
+      match /ecoCoinLedger/{transactionId} {
+        // STRICT IMMUTABILITY: Update and delete are forbidden
+        allow update, delete: if false;
+
+        // User can only read their own ledger records; admin can audit
+        allow read: if isValidTenant(tenantId) &&
+                       isAuthenticated() &&
+                       (resource.data.get('userId', '') == request.auth.uid || isAdmin());
+
+        // Authenticated append-only ledger transaction creation
+        allow create: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         request.resource.data.get('userId', '') == request.auth.uid &&
+                         isValidLedgerEntry(request.resource.data);
+      }
+
+      // -------------------------------------------------------------
+      // Service Policies: tenants/{tenantId}/servicePolicies/{policyId}
+      // -------------------------------------------------------------
+      match /servicePolicies/{policyId} {
+        // Public / authenticated read allowed; modifications prohibited via client
+        allow read: if isValidTenant(tenantId);
+        allow write: if false;
+      }
+
+      // -------------------------------------------------------------
+      // Audit Events: tenants/{tenantId}/auditEvents/{eventId}
+      // -------------------------------------------------------------
+      match /auditEvents/{eventId} {
+        // Only administrators can inspect security and compliance audit logs
+        allow read: if isValidTenant(tenantId) && isAdmin();
+
+        // Append-only audit record creation by authenticated services/actors
+        allow create: if isValidTenant(tenantId) &&
+                         isAuthenticated() &&
+                         isValidAuditEvent(request.resource.data);
+
+        // Strict immutability: audit records cannot be modified or deleted
+        allow update, delete: if false;
+      }
+
+      // -------------------------------------------------------------
+      // Auxiliary Municipal Subcollections
+      // -------------------------------------------------------------
+      match /wards/{wardId} {
+        allow read: if isValidTenant(tenantId);
+        allow write: if isValidTenant(tenantId) && isAdmin();
+      }
+
+      match /departments/{deptId} {
+        allow read: if isValidTenant(tenantId);
+        allow write: if isValidTenant(tenantId) && isAdmin();
+      }
+
+      match /tasks/{taskId} {
+        allow read: if isValidTenant(tenantId) && isAuthenticated();
+        allow write: if isValidTenant(tenantId) && (isAdmin() || isSupervisor());
+      }
+
+      match /impactLedger/{entryId} {
+        allow read: if isValidTenant(tenantId) && isAuthenticated();
+        allow create: if isValidTenant(tenantId) && isAuthenticated();
+        allow update, delete: if false;
+      }
+
+      match /notifications/{notificationId} {
+        allow read: if isValidTenant(tenantId) &&
+                       isAuthenticated() &&
+                       (resource.data.get('userId', '') == request.auth.uid || isAdmin());
+        allow write: if isValidTenant(tenantId) && isAdmin();
+      }
+
+      match /moderationCases/{modCaseId} {
+        allow read, write: if isValidTenant(tenantId) && (isAdmin() || isSupervisor());
+      }
+    }
+
+    // ===============================================================
+    // Default Deny Rule for All Unmatched Collections and Documents
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
