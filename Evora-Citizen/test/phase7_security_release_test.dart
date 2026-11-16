@@ -189,7 +189,7 @@ void main() {
       final firestoreRulesFile = File('firestore.rules');
       expect(firestoreRulesFile.existsSync(), isTrue, reason: 'firestore.rules must exist');
 
-      final content = firestoreRulesFile.readAsStringSync();
+      final content = firestoreRulesFile.readAsStringSync().replaceAll('\r\n', '\n');
       expect(content, contains("rules_version = '2';"));
       expect(content, contains('service cloud.firestore'));
       expect(content, contains('function isAuthenticated()'));
