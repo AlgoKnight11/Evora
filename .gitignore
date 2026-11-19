@@ -38,6 +38,10 @@ Thumbs.db
 **/android/.gradle/
 **/android/.kotlin/
 **/android/local.properties
+**/android/key.properties
+**/key.properties
+**/*.keystore
+**/*.jks
 **/android/app/google-services.json
 **/android/app/debug/
 **/android/app/profile/

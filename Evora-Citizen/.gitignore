@@ -66,6 +66,12 @@ screen_splash_flutter.png
 .env.*
 !.env.example
 
+# Android release signing keys and credentials
+*.keystore
+*.jks
+key.properties
+**/key.properties
+
 # Firebase configuration credentials
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
